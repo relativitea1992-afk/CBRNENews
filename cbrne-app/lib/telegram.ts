@@ -6,7 +6,7 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
   }
   
   try {
-    const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cbrne-app.vercel.app';
+    const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
     const finalMessage = `${text}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
 
     if (options?.lat && options?.lon) {
