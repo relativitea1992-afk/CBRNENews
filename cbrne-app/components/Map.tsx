@@ -38,8 +38,8 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
       style={{ height: '100%', width: '100%', background: '#0f172a' }} // Matches bg-slate-900
     >
       <TileLayer
-        attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        attribution='&copy; <a href="https://maps.google.com">Google Maps</a>'
+        url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
       />
       
       {incidents.map((incident) => {

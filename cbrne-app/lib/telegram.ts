@@ -10,8 +10,8 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
     const finalMessage = `${text}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
 
     if (options?.lat && options?.lon) {
-      // Use Yandex Static Maps (Satellite + Marker)
-      const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=14&l=sat&pt=${options.lon},${options.lat},pm2rdm`;
+      // Use Yandex Static Maps (Satellite + Landmarks/Skeleton + Marker)
+      const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=14&l=sat,skl&pt=${options.lon},${options.lat},pm2rdm`;
       
       const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
         method: 'POST',
