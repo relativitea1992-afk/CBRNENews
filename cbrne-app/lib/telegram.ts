@@ -13,26 +13,18 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
       // Use Yandex Static Maps (Satellite + Landmarks/Skeleton + Marker)
       const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=14&l=sat,skl&pt=${options.lon},${options.lat},pm2rdm`;
       
-      const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      // Send photo first, without caption
+      await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
           photo: photoUrl,
-          caption: finalMessage,
-          parse_mode: 'HTML',
         }),
       });
-      
-      if (!response.ok) {
-        console.error('Failed to send Telegram photo:', await response.text());
-        // Fallback to text message if photo fails
-      } else {
-        return;
-      }
     }
 
-    // Standard text message (or fallback)
+    // Send the detailed text message (allows up to 4096 chars)
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
