@@ -51,14 +51,12 @@ ${articleText}
 
     if (response.text) {
       let cleanText = response.text.trim();
-      // Remove markdown JSON code blocks if present
-      if (cleanText.startsWith('```json')) {
-        cleanText = cleanText.substring(7);
+      const firstBrace = cleanText.indexOf('{');
+      const lastBrace = cleanText.lastIndexOf('}');
+      
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        cleanText = cleanText.substring(firstBrace, lastBrace + 1);
       }
-      if (cleanText.endsWith('```')) {
-        cleanText = cleanText.substring(0, cleanText.length - 3);
-      }
-      cleanText = cleanText.trim();
       
       const result = JSON.parse(cleanText) as TriageResult;
       if (result.advisory) {
