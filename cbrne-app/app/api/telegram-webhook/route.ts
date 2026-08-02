@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendTelegramMessage } from '@/lib/telegram';
 import { DateTime } from 'luxon';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const secret = request.nextUrl.searchParams.get('secret');
   if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
