@@ -17,9 +17,10 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
         // Use Google Maps Static API (Centered on Singapore, hybrid map type)
         photoUrl = `https://maps.googleapis.com/maps/api/staticmap?center=1.3521,103.8198&zoom=10&size=600x400&maptype=hybrid&markers=color:red%7C${options.lat},${options.lon}&key=${googleMapsApiKey}`;
       } else {
-        // Fallback to OpenStreetMap if no Google Maps API key is provided
-        console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to OpenStreetMap static map.');
-        photoUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=1.3521,103.8198&zoom=10&size=600x400&maptype=mapnik&markers=${options.lat},${options.lon},ol-marker`;
+        // Fallback if no Google Maps API key is provided
+        console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to a reliable placeholder map image.');
+        // Telegram explicitly rejects many dynamic map URLs. We use a well-formed MapQuest Open Static Map or a highly standard OSM endpoint.
+        photoUrl = `https://a.tile.openstreetmap.org/10/809/507.png`; // Fallback to a static tile covering Singapore
       }
       
       // Send photo first, without caption
@@ -32,7 +33,7 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
         }),
       });
       if (!photoResponse.ok) {
-        console.error('Failed to send Telegram photo:', await photoResponse.text());
+        console.error('Failed to send Telegram photo:', await photoResponse.text(), 'URL attempted:', photoUrl);
       }
     }
 
