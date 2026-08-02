@@ -22,10 +22,10 @@ type Incident = {
   summary: string;
   sourceName: string;
   sourceUrl: string;
-  lat: number | null;
-  lng: number | null;
+  latitude: number | null;
+  longitude: number | null;
   type: string;
-  publishedAt: string;
+  createdAt: string;
 };
 
 export default function Map({ incidents }: { incidents: Incident[] }) {
@@ -53,7 +53,7 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
       />
       
       {incidents.map((incident) => {
-        if (!incident.lat || !incident.lng) return null;
+        if (!incident.latitude || !incident.longitude) return null;
         
         let color = '#ef4444'; // default red
         if (incident.type === 'Odour') color = '#eab308'; // yellow
@@ -65,7 +65,7 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
         return (
           <CircleMarker 
             key={incident.id} 
-            center={[incident.lat, incident.lng]}
+            center={[incident.latitude, incident.longitude]}
             pathOptions={{ fillColor: color, color: color, fillOpacity: 0.7 }}
             radius={8}
           >
