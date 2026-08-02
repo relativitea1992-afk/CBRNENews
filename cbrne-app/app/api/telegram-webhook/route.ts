@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
           await sendTelegramMessage(chatId, "No relevant threats found in the database.");
         } else {
            const msg = `🔍 <b>LATEST THREAT</b>\n\n<b>Headline:</b> ${latestIncident.headline}\n<b>Type:</b> ${latestIncident.type}\n<b>Summary:</b> ${latestIncident.summary}\n\n<b>Link:</b> ${latestIncident.sourceUrl}`;
-           await sendTelegramMessage(chatId, msg);
+           await sendTelegramMessage(chatId, msg, { lat: latestIncident.lat, lon: latestIncident.lng });
         }
       }
     }

@@ -1,4 +1,4 @@
-export async function sendTelegramMessage(chatId: string, text: string) {
+export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null }) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     console.error('TELEGRAM_BOT_TOKEN is missing');
@@ -6,14 +6,39 @@ export async function sendTelegramMessage(chatId: string, text: string) {
   }
   
   try {
+    const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cbrne-app.vercel.app';
+    const finalMessage = `${text}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
+
+    if (options?.lat && options?.lon) {
+      // Use Yandex Static Maps (Satellite + Marker)
+      const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=14&l=sat&pt=${options.lon},${options.lat},pm2rdm`;
+      
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          photo: photoUrl,
+          caption: finalMessage,
+          parse_mode: 'HTML',
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to send Telegram photo:', await response.text());
+        // Fallback to text message if photo fails
+      } else {
+        return;
+      }
+    }
+
+    // Standard text message (or fallback)
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: text,
+        text: finalMessage,
         parse_mode: 'HTML',
       }),
     });
