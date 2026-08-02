@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
+import { renderToString } from 'react-dom/server';
+import { Wind, FlaskConical, Biohazard, Radiation, Bomb } from 'lucide-react';
 
 type Incident = {
   id: string;
@@ -44,18 +46,43 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
         if (!incident.latitude || !incident.longitude) return null;
         
         let color = '#ef4444'; // default red
-        if (incident.type === 'Odour') color = '#eab308'; // yellow
-        if (incident.type === 'Chemical') color = '#8b5cf6'; // purple
-        if (incident.type === 'Biological') color = '#22c55e'; // green
-        if (incident.type === 'Nuclear' || incident.type === 'Radiological') color = '#f97316'; // orange
-        if (incident.type === 'Explosive') color = '#dc2626'; // dark red
+        let IconComp = Radiation;
+        if (incident.type === 'Odour') { color = '#eab308'; IconComp = Wind; }
+        else if (incident.type === 'Chemical') { color = '#8b5cf6'; IconComp = FlaskConical; }
+        else if (incident.type === 'Biological') { color = '#22c55e'; IconComp = Biohazard; }
+        else if (incident.type === 'Nuclear' || incident.type === 'Radiological') { color = '#f97316'; IconComp = Radiation; }
+        else if (incident.type === 'Explosive') { color = '#dc2626'; IconComp = Bomb; }
+
+        const iconHtml = renderToString(
+          <div style={{
+            backgroundColor: color,
+            color: 'white',
+            borderRadius: '50%',
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+            border: '2px solid white'
+          }}>
+            <IconComp size={18} />
+          </div>
+        );
+
+        const customIcon = L.divIcon({
+          html: iconHtml,
+          className: 'custom-leaflet-icon',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+          popupAnchor: [0, -16]
+        });
 
         return (
-          <CircleMarker 
+          <Marker 
             key={incident.id} 
-            center={[incident.latitude, incident.longitude]}
-            pathOptions={{ fillColor: color, color: color, fillOpacity: 0.7 }}
-            radius={8}
+            position={[incident.latitude, incident.longitude]}
+            icon={customIcon}
           >
             <Popup className="bg-slate-800 text-white rounded-md border-none">
               <div className="p-2 max-w-xs text-slate-800">
@@ -68,7 +95,7 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
                 </div>
               </div>
             </Popup>
-          </CircleMarker>
+          </Marker>
         );
       })}
     </MapContainer>
