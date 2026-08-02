@@ -50,7 +50,17 @@ ${articleText}
     });
 
     if (response.text) {
-      const result = JSON.parse(response.text) as TriageResult;
+      let cleanText = response.text.trim();
+      // Remove markdown JSON code blocks if present
+      if (cleanText.startsWith('```json')) {
+        cleanText = cleanText.substring(7);
+      }
+      if (cleanText.endsWith('```')) {
+        cleanText = cleanText.substring(0, cleanText.length - 3);
+      }
+      cleanText = cleanText.trim();
+      
+      const result = JSON.parse(cleanText) as TriageResult;
       if (result.advisory) {
         result.advisory = result.advisory.replace(/\[BREAK\]/g, '\n\n');
       }

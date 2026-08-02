@@ -10,8 +10,8 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
     const finalMessage = `${text}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
 
     if (options?.lat && options?.lon) {
-      // Use Yandex Static Maps (Satellite + Landmarks/Skeleton + Marker)
-      const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=14&l=sat,skl&pt=${options.lon},${options.lat},pm2rdm`;
+      // Center on Singapore (lon: 103.8198, lat: 1.3521), zoom level 10 to see region
+      const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=10&l=sat,skl&pt=${options.lon},${options.lat},pm2rdm`;
       
       // Send photo first, without caption
       await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
