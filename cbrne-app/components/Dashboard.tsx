@@ -20,7 +20,7 @@ interface Incident {
   longitude: number | null;
   isRelevant: boolean;
   createdAt: string;
-  advisory?: string;
+  advisory: string | null;
 }
 
 const getTypeConfig = (type: string) => {
