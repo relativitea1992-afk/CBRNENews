@@ -30,14 +30,20 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
           console.error('Failed to send Telegram photo (Google Maps):', await photoResponse.text());
         }
       } else {
-        // Fallback to our OG image map which overlays a Lucide icon onto the Yandex static map
-        console.warn('GOOGLE_MAPS_API_KEY is not set. Using OG Map Image fallback.');
+        // Fallback to Yandex static map with color-coded markers matching dashboard pictograms
+        console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to Yandex static map with colored markers.');
         
-        const typeParam = options.type ? `&type=${encodeURIComponent(options.type)}` : '';
-        const mapApiUrl = `${dashboardUrl}/api/og/map?lat=${options.lat}&lon=${options.lon}${typeParam}`;
+        let markerColor = 'rd'; // default red
+        if (options.type === 'Chemical') markerColor = 'gn'; // green
+        if (options.type === 'Biological') markerColor = 'vv'; // violet/purple
+        if (options.type === 'Radiological') markerColor = 'yw'; // yellow
+        if (options.type === 'Explosive') markerColor = 'rd'; // red
+        if (!options.type) markerColor = 'lb'; // light blue (general)
+
+        const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=10&l=map&lang=en_US&size=600,400&pt=${options.lon},${options.lat},pm2${markerColor}m`;
         
         try {
-          const imageReq = await fetch(mapApiUrl);
+          const imageReq = await fetch(photoUrl);
           if (imageReq.ok) {
             const arrayBuffer = await imageReq.arrayBuffer();
             const blob = new Blob([arrayBuffer], { type: 'image/png' });
@@ -51,13 +57,13 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
               body: formData,
             });
             if (!photoResponse.ok) {
-               console.error('Failed to upload Telegram photo (OG Map Buffer):', await photoResponse.text());
+               console.error('Failed to upload Telegram photo (Yandex Buffer):', await photoResponse.text());
             }
           } else {
-             console.error('Failed to fetch OG map:', await imageReq.text());
+             console.error('Failed to fetch Yandex map:', await imageReq.text());
           }
         } catch (e) {
-          console.error('Error fetching/uploading OG map:', e);
+          console.error('Error fetching/uploading Yandex map:', e);
         }
       }
     }
