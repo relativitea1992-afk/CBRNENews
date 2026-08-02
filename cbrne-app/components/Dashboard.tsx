@@ -79,7 +79,7 @@ export default function Dashboard({ incidents }: { incidents: Incident[] }) {
         </section>
 
         {/* Right Panel: Map */}
-        <section className="w-full lg:w-2/3 h-[50vh] lg:h-full relative rounded-xl overflow-hidden glass-panel border border-slate-700/50 shadow-lg">
+        <section className="w-full lg:w-2/3 h-[50vh] min-h-[50vh] lg:h-full lg:min-h-[calc(100vh-120px)] relative rounded-xl overflow-hidden glass-panel border border-slate-700/50 shadow-lg">
           <MapWithNoSSR incidents={incidents} />
           
           {/* Map Legend Overlay */}
