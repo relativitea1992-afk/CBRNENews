@@ -1,4 +1,4 @@
-export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null }) {
+export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null, type?: string | null }) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     console.error('TELEGRAM_BOT_TOKEN is missing');
@@ -30,15 +30,14 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
           console.error('Failed to send Telegram photo (Google Maps):', await photoResponse.text());
         }
       } else {
-        // Fallback to a reliable map if no Google Maps API key is provided
-        console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to Yandex static map via local fetch buffer (forced English labels).');
-        // Added lang=en_US to ensure no Russian names appear as per user request. Reverted to standard map layer.
-        photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=10&l=map&lang=en_US&size=600,400&pt=${options.lon},${options.lat},pm2rdm`;
+        // Fallback to our OG image map which overlays a Lucide icon onto the Yandex static map
+        console.warn('GOOGLE_MAPS_API_KEY is not set. Using OG Map Image fallback.');
         
-        // Telegram often rejects direct OSM static map URLs. 
-        // We bypass this by fetching the image ourselves on the server and uploading it as a Buffer to Telegram.
+        const typeParam = options.type ? `&type=${encodeURIComponent(options.type)}` : '';
+        const mapApiUrl = `${dashboardUrl}/api/og/map?lat=${options.lat}&lon=${options.lon}${typeParam}`;
+        
         try {
-          const imageReq = await fetch(photoUrl);
+          const imageReq = await fetch(mapApiUrl);
           if (imageReq.ok) {
             const arrayBuffer = await imageReq.arrayBuffer();
             const blob = new Blob([arrayBuffer], { type: 'image/png' });
@@ -52,13 +51,13 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
               body: formData,
             });
             if (!photoResponse.ok) {
-               console.error('Failed to upload Telegram photo (OSM Buffer):', await photoResponse.text());
+               console.error('Failed to upload Telegram photo (OG Map Buffer):', await photoResponse.text());
             }
           } else {
-             console.error('Failed to fetch OSM static map:', await imageReq.text());
+             console.error('Failed to fetch OG map:', await imageReq.text());
           }
         } catch (e) {
-          console.error('Error fetching/uploading OSM map:', e);
+          console.error('Error fetching/uploading OG map:', e);
         }
       }
     }

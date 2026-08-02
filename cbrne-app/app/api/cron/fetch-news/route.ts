@@ -104,7 +104,7 @@ ${triage.summary}
 ${triage.advisory ? `<b>Advisory:</b>\n${triage.advisory}\n` : ''}
 <b>Link:</b> ${article.url}`;
 
-      await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng });
+      await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
     } else if (triage && !triage.isRelevant) {
        // Save as irrelevant to avoid reprocessing
        await prisma.incident.create({
