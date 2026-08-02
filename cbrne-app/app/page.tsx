@@ -17,8 +17,8 @@ export default async function Home() {
   // Serialize dates to ISO strings for the client component
   const serializedIncidents = incidents.map(i => ({
     ...i,
-    latitude: i.latitude ? Number(i.latitude) : null,
-    longitude: i.longitude ? Number(i.longitude) : null,
+    latitude: i.lat ? Number(i.lat) : null,
+    longitude: i.lng ? Number(i.lng) : null,
     createdAt: i.createdAt.toISOString(),
   }));
 
