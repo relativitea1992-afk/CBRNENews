@@ -20,6 +20,7 @@ interface Incident {
   longitude: number | null;
   isRelevant: boolean;
   createdAt: string;
+  advisory?: string;
 }
 
 const getTypeConfig = (type: string) => {
@@ -85,6 +86,12 @@ export default function Dashboard({ incidents }: { incidents: Incident[] }) {
                     </div>
                     <h3 className="font-medium text-slate-100 mb-2 leading-snug">{incident.headline}</h3>
                     <p className="text-sm text-slate-400 mb-3 line-clamp-3">{incident.summary}</p>
+                    {incident.advisory && (
+                      <div className="mb-3 p-3 bg-red-950/30 border border-red-900/50 rounded-lg">
+                        <span className="text-xs font-bold text-red-400 uppercase tracking-wider mb-1 block">Advisory</span>
+                        <p className="text-sm text-red-200">{incident.advisory}</p>
+                      </div>
+                    )}
                     <a href={incident.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-neon-blue hover:text-blue-400 flex items-center gap-1 w-fit">
                       Source: {incident.sourceName} ↗
                     </a>

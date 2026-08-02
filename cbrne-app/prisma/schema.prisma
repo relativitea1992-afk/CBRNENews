@@ -20,4 +20,5 @@ model Incident {
   lng         Float?
   type        String   @default("Unknown")
   isRelevant  Boolean  @default(true)
+  advisory    String?
 }

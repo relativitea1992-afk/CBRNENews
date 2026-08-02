@@ -86,6 +86,7 @@ export async function GET(request: Request) {
           lat: triage.lat,
           lng: triage.lng,
           type: triage.type,
+          advisory: triage.advisory,
           isRelevant: true,
         }
       });
@@ -100,6 +101,7 @@ export async function GET(request: Request) {
 <b>Impact Summary:</b>
 ${triage.summary}
 
+${triage.advisory ? `<b>Advisory:</b>\n${triage.advisory}\n` : ''}
 <b>Link:</b> ${article.url}`;
 
       await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng });

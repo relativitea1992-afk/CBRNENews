@@ -11,6 +11,7 @@ export interface TriageResult {
   lat: number | null;
   lng: number | null;
   type: string;
+  advisory?: string;
 }
 
 export async function triageNewsArticle(articleText: string): Promise<TriageResult | null> {
@@ -28,6 +29,7 @@ Return the result strictly as a JSON object with the following fields:
 - "isRelevant" (boolean): true if it represents a relevant CBRNE/Odour threat to Singapore, false otherwise.
 - "headline" (string): A concise, punchy headline for the alert.
 - "summary" (string): A 1-2 sentence summary of the incident and its potential impact on Singapore.
+- "advisory" (string): Provide an actionable advisory highlighting potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details (such as wind direction).
 - "lat" (number or null): Latitude of the incident location. Null if unknown.
 - "lng" (number or null): Longitude of the incident location. Null if unknown.
 - "type" (string): Classify as "Chemical", "Biological", "Radiological", "Nuclear", "Explosive", "Odour", or "Unknown".
