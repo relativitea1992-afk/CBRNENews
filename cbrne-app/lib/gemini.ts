@@ -29,7 +29,7 @@ Return the result strictly as a JSON object with the following fields:
 - "isRelevant" (boolean): true if it represents a relevant CBRNE/Odour threat to Singapore, false otherwise.
 - "headline" (string): A concise, punchy headline for the alert.
 - "summary" (string): A 1-2 sentence summary of the incident and its potential impact on Singapore.
-- "advisory" (string): Provide an actionable advisory highlighting potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details (such as wind direction). Analyze the exact risk (e.g., toxicity, flammability) if information is available. Clearly state what residents should do if they are INDOORS (e.g., close windows, turn off AC) and what they should do if they are OUTDOORS (e.g., seek shelter, avoid the area). Use suitable spacing and newlines (\n\n) to separate these points into clear paragraphs for maximum readability.
+- "advisory" (string): Provide an actionable advisory highlighting potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details (such as wind direction). Analyze the exact risk (e.g., toxicity, flammability) if information is available. Clearly state what residents should do if they are INDOORS (e.g., close windows, turn off AC) and what they should do if they are OUTDOORS (e.g., seek shelter, avoid the area). Use the exact string [BREAK] to separate these points into clear paragraphs. Do not use actual line breaks or newline characters in the JSON string.
 - "lat" (number or null): Latitude of the incident location. Null if unknown.
 - "lng" (number or null): Longitude of the incident location. Null if unknown.
 - "type" (string): Classify as "Chemical", "Biological", "Radiological", "Nuclear", "Explosive", "Odour", or "Unknown".
@@ -51,6 +51,9 @@ ${articleText}
 
     if (response.text) {
       const result = JSON.parse(response.text) as TriageResult;
+      if (result.advisory) {
+        result.advisory = result.advisory.replace(/\[BREAK\]/g, '\n\n');
+      }
       return result;
     }
   } catch (error) {
