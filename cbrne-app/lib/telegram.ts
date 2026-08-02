@@ -10,8 +10,17 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
     const finalMessage = `${text}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
 
     if (options?.lat && options?.lon) {
-      // Center on Singapore (lon: 103.8198, lat: 1.3521), zoom level 10 to see region
-      const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=10&l=sat,skl&pt=${options.lon},${options.lat},pm2rdm`;
+      const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+      
+      let photoUrl = '';
+      if (googleMapsApiKey) {
+        // Use Google Maps Static API (Centered on Singapore, hybrid map type)
+        photoUrl = `https://maps.googleapis.com/maps/api/staticmap?center=1.3521,103.8198&zoom=10&size=600x400&maptype=hybrid&markers=color:red%7C${options.lat},${options.lon}&key=${googleMapsApiKey}`;
+      } else {
+        // Fallback to OpenStreetMap if no Google Maps API key is provided
+        console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to OpenStreetMap static map.');
+        photoUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=1.3521,103.8198&zoom=10&size=600x400&maptype=mapnik&markers=${options.lat},${options.lon},ol-marker`;
+      }
       
       // Send photo first, without caption
       await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
