@@ -70,7 +70,24 @@ export async function generateHourlyReport() {
     cnaRssStatus = `❌ FAILED (${error.message || 'Unknown'})`;
   }
 
-  // 5. Construct the Hourly Report Message
+  // 5. Check Supabase Linkage
+  let supabaseStatus = 'Unknown';
+  try {
+    const start = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    const latency = Date.now() - start;
+    supabaseStatus = `✅ ONLINE (${latency}ms)`;
+  } catch (error: any) {
+    supabaseStatus = `❌ FAILED (${error.message || 'Unknown'})`;
+  }
+
+  // 6. Check Overall Compute on Vercel
+  const memoryUsage = process.memoryUsage();
+  const memoryMB = Math.round(memoryUsage.rss / 1024 / 1024);
+  const vercelRegion = process.env.VERCEL_REGION || 'Local/Unknown';
+  const computeStatus = `✅ Region: ${vercelRegion} | RAM: ${memoryMB}MB`;
+
+  // 7. Construct the Hourly Report Message
   const reportMsg = `📊 <b>SYSTEM HOURLY REPORT</b> 📊
 
 <b>News Monitoring Cron Job</b>
@@ -80,6 +97,10 @@ ${newsStatusMsg}
 <b>Gemini AI Engine:</b> ${geminiStatus}
 <b>NewsAPI Link:</b> ${newsApiStatus}
 <b>CNA RSS Link:</b> ${cnaRssStatus}
+<b>Supabase Link:</b> ${supabaseStatus}
+
+<b>Vercel Compute</b>
+${computeStatus}
 
 <i>Report generated automatically.</i>`;
 
