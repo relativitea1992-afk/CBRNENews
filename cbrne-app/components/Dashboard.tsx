@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { DateTime } from 'luxon';
+import { Wind, FlaskConical, Biohazard, Radiation, Bomb } from 'lucide-react';
 
 const MapWithNoSSR = dynamic(() => import('@/components/Map'), {
   ssr: false,
@@ -20,6 +21,18 @@ interface Incident {
   isRelevant: boolean;
   createdAt: string;
 }
+
+const getTypeConfig = (type: string) => {
+  switch (type) {
+    case 'Odour': return { color: '#eab308', icon: <Wind size={16} /> }; // yellow
+    case 'Chemical': return { color: '#8b5cf6', icon: <FlaskConical size={16} /> }; // purple
+    case 'Biological': return { color: '#22c55e', icon: <Biohazard size={16} /> }; // green
+    case 'Nuclear':
+    case 'Radiological': return { color: '#f97316', icon: <Radiation size={16} /> }; // orange
+    case 'Explosive': return { color: '#dc2626', icon: <Bomb size={16} /> }; // red
+    default: return { color: '#ef4444', icon: <Radiation size={16} /> };
+  }
+};
 
 export default function Dashboard({ incidents }: { incidents: Incident[] }) {
   return (
@@ -57,23 +70,27 @@ export default function Dashboard({ incidents }: { incidents: Incident[] }) {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {incidents.map(incident => (
-                <article key={incident.id} className="glass-panel p-4 rounded-xl hover:bg-slate-800/80 transition-colors border-l-4" style={{
-                  borderLeftColor: incident.type === 'Odour' ? '#eab308' : incident.type === 'Chemical' ? '#8b5cf6' : incident.type === 'Biological' ? '#22c55e' : incident.type === 'Explosive' ? '#dc2626' : '#ef4444'
-                }}>
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-semibold px-2 py-1 rounded bg-slate-900 text-slate-300">
-                      {incident.type}
-                    </span>
-                    <time className="text-xs text-slate-500">{DateTime.fromISO(incident.createdAt).toRelative()}</time>
-                  </div>
-                  <h3 className="font-medium text-slate-100 mb-2 leading-snug">{incident.headline}</h3>
-                  <p className="text-sm text-slate-400 mb-3 line-clamp-3">{incident.summary}</p>
-                  <a href={incident.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-neon-blue hover:text-blue-400 flex items-center gap-1 w-fit">
-                    Source: {incident.sourceName} ↗
-                  </a>
-                </article>
-              ))}
+              {incidents.map(incident => {
+                const config = getTypeConfig(incident.type);
+                return (
+                  <article key={incident.id} className="glass-panel p-4 rounded-xl hover:bg-slate-800/80 transition-colors border-l-4" style={{
+                    borderLeftColor: config.color
+                  }}>
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-xs font-semibold px-2 py-1 rounded bg-slate-900 text-slate-300 flex items-center gap-1.5" style={{ color: config.color }}>
+                        {config.icon}
+                        {incident.type}
+                      </span>
+                      <time className="text-xs text-slate-500">{DateTime.fromISO(incident.createdAt).toRelative()}</time>
+                    </div>
+                    <h3 className="font-medium text-slate-100 mb-2 leading-snug">{incident.headline}</h3>
+                    <p className="text-sm text-slate-400 mb-3 line-clamp-3">{incident.summary}</p>
+                    <a href={incident.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-neon-blue hover:text-blue-400 flex items-center gap-1 w-fit">
+                      Source: {incident.sourceName} ↗
+                    </a>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -85,12 +102,12 @@ export default function Dashboard({ incidents }: { incidents: Incident[] }) {
           {/* Map Legend Overlay */}
           <div className="absolute bottom-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl z-[1000] text-xs">
             <h4 className="font-semibold text-slate-200 mb-2 border-b border-slate-700 pb-1">Threat Types</h4>
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-500"></div><span>Odour</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-500"></div><span>Chemical</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500"></div><span>Biological</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500"></div><span>Radiological/Nuclear</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-600"></div><span>Explosive</span></div>
+            <div className="flex flex-col gap-2 text-slate-300">
+              <div className="flex items-center gap-2"><span style={{ color: '#eab308' }}><Wind size={16} /></span><span>Odour</span></div>
+              <div className="flex items-center gap-2"><span style={{ color: '#8b5cf6' }}><FlaskConical size={16} /></span><span>Chemical</span></div>
+              <div className="flex items-center gap-2"><span style={{ color: '#22c55e' }}><Biohazard size={16} /></span><span>Biological</span></div>
+              <div className="flex items-center gap-2"><span style={{ color: '#f97316' }}><Radiation size={16} /></span><span>Radiological/Nuclear</span></div>
+              <div className="flex items-center gap-2"><span style={{ color: '#dc2626' }}><Bomb size={16} /></span><span>Explosive</span></div>
             </div>
           </div>
         </section>

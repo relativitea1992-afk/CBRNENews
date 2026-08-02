@@ -14,6 +14,7 @@
     "@prisma/client": "^6.9.0",
     "enhanced-resolve": "^5.24.5",
     "leaflet": "^1.9.4",
+    "lucide-react": "^1.28.0",
     "luxon": "^3.6.1",
     "next": "16.2.12",
     "react": "19.2.4",
