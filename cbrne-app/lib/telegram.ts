@@ -16,24 +16,50 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
       if (googleMapsApiKey) {
         // Use Google Maps Static API (Centered on Singapore, hybrid map type)
         photoUrl = `https://maps.googleapis.com/maps/api/staticmap?center=1.3521,103.8198&zoom=10&size=600x400&maptype=hybrid&markers=color:red%7C${options.lat},${options.lon}&key=${googleMapsApiKey}`;
+        
+        // Send photo URL directly if Google Maps API Key is set
+        const photoResponse = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            photo: photoUrl,
+          }),
+        });
+        if (!photoResponse.ok) {
+          console.error('Failed to send Telegram photo (Google Maps):', await photoResponse.text());
+        }
       } else {
-        // Fallback if no Google Maps API key is provided
-        console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to a reliable placeholder map image.');
-        // Telegram explicitly rejects many dynamic map URLs. We use a well-formed MapQuest Open Static Map or a highly standard OSM endpoint.
-        photoUrl = `https://a.tile.openstreetmap.org/10/809/507.png`; // Fallback to a static tile covering Singapore
-      }
-      
-      // Send photo first, without caption
-      const photoResponse = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          photo: photoUrl,
-        }),
-      });
-      if (!photoResponse.ok) {
-        console.error('Failed to send Telegram photo:', await photoResponse.text(), 'URL attempted:', photoUrl);
+        // Fallback to a reliable map if no Google Maps API key is provided
+        console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to Yandex static map via local fetch buffer (forced English labels).');
+        // Added lang=en_US to ensure no Russian names appear as per user request
+        photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=10&l=map&lang=en_US&size=600,400&pt=${options.lon},${options.lat},pm2rdm`;
+        
+        // Telegram often rejects direct OSM static map URLs. 
+        // We bypass this by fetching the image ourselves on the server and uploading it as a Buffer to Telegram.
+        try {
+          const imageReq = await fetch(photoUrl);
+          if (imageReq.ok) {
+            const arrayBuffer = await imageReq.arrayBuffer();
+            const blob = new Blob([arrayBuffer], { type: 'image/png' });
+            
+            const formData = new FormData();
+            formData.append('chat_id', chatId);
+            formData.append('photo', blob, 'map.png');
+            
+            const photoResponse = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+              method: 'POST',
+              body: formData,
+            });
+            if (!photoResponse.ok) {
+               console.error('Failed to upload Telegram photo (OSM Buffer):', await photoResponse.text());
+            }
+          } else {
+             console.error('Failed to fetch OSM static map:', await imageReq.text());
+          }
+        } catch (e) {
+          console.error('Error fetching/uploading OSM map:', e);
+        }
       }
     }
 
