@@ -15,16 +15,7 @@ export async function GET(request: Request) {
       return new Response('Missing lat/lon', { status: 400 });
     }
 
-    // Fetch the yandex static map without any marker (so we place our own)
     const yandexUrl = `https://static-maps.yandex.ru/1.x/?ll=${lon},${lat}&z=10&l=map&lang=en_US&size=600,400`;
-    
-    // We can fetch the image as ArrayBuffer to inline it
-    const mapReq = await fetch(yandexUrl);
-    if (!mapReq.ok) {
-      return new Response('Failed to fetch map', { status: 500 });
-    }
-    const mapBuffer = await mapReq.arrayBuffer();
-    const base64Map = `data:image/png;base64,${Buffer.from(mapBuffer).toString('base64')}`;
 
     // Determine icon
     let Icon = Wind;
@@ -46,7 +37,7 @@ export async function GET(request: Request) {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={base64Map}
+            src={yandexUrl}
             alt="Map"
             style={{ position: 'absolute', top: 0, left: 0, width: 600, height: 400 }}
           />
