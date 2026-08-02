@@ -58,11 +58,16 @@ ${articleText}
         cleanText = cleanText.substring(firstBrace, lastBrace + 1);
       }
       
-      const result = JSON.parse(cleanText) as TriageResult;
-      if (result.advisory) {
-        result.advisory = result.advisory.replace(/\[BREAK\]/g, '\n\n');
+      try {
+        const result = JSON.parse(cleanText) as TriageResult;
+        if (result.advisory) {
+          result.advisory = result.advisory.replace(/\[BREAK\]/g, '\n\n');
+        }
+        return result;
+      } catch (parseError) {
+        console.error('Failed to parse Gemini JSON:', cleanText);
+        throw parseError;
       }
-      return result;
     }
   } catch (error) {
     console.error('Gemini AI Triage Error:', error);
