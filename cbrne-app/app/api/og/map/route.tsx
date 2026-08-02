@@ -2,8 +2,6 @@ import { ImageResponse } from 'next/og';
 import { Biohazard, Radiation, Bomb, FlaskConical, Wind } from 'lucide-react';
 import React from 'react';
 
-export const runtime = 'edge';
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
