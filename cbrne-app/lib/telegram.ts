@@ -32,8 +32,8 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
       } else {
         // Fallback to a reliable map if no Google Maps API key is provided
         console.warn('GOOGLE_MAPS_API_KEY is not set. Falling back to Yandex static map via local fetch buffer (forced English labels).');
-        // Added lang=en_US to ensure no Russian names appear as per user request. Changed l=sat,skl for Satellite Hybrid view.
-        photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=10&l=sat,skl&lang=en_US&size=600,400&pt=${options.lon},${options.lat},pm2rdm`;
+        // Added lang=en_US to ensure no Russian names appear as per user request. Reverted to standard map layer.
+        photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=10&l=map&lang=en_US&size=600,400&pt=${options.lon},${options.lat},pm2rdm`;
         
         // Telegram often rejects direct OSM static map URLs. 
         // We bypass this by fetching the image ourselves on the server and uploading it as a Buffer to Telegram.
