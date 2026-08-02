@@ -23,7 +23,7 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
       }
       
       // Send photo first, without caption
-      await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      const photoResponse = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -31,6 +31,9 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
           photo: photoUrl,
         }),
       });
+      if (!photoResponse.ok) {
+        console.error('Failed to send Telegram photo:', await photoResponse.text());
+      }
     }
 
     // Send the detailed text message (allows up to 4096 chars)
