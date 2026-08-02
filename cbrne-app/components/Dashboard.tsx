@@ -88,8 +88,8 @@ export default function Dashboard({ incidents }: { incidents: Incident[] }) {
                     <p className="text-sm text-slate-400 mb-3 line-clamp-3">{incident.summary}</p>
                     {incident.advisory && (
                       <div className="mb-3 p-3 bg-red-950/30 border border-red-900/50 rounded-lg">
-                        <span className="text-xs font-bold text-red-400 uppercase tracking-wider mb-1 block">Advisory</span>
-                        <p className="text-sm text-red-200">{incident.advisory}</p>
+                        <span className="text-xs font-bold text-red-400 uppercase tracking-wider mb-2 block">Advisory</span>
+                        <p className="text-sm text-red-200 whitespace-pre-wrap leading-relaxed">{incident.advisory}</p>
                       </div>
                     )}
                     <a href={incident.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-neon-blue hover:text-blue-400 flex items-center gap-1 w-fit">
