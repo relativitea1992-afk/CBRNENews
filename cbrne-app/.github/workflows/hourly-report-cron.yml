@@ -1,0 +1,15 @@
+name: Hourly Report Cron
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger hourly-report
+        run: |
+          curl -X GET "${{ secrets.APP_URL }}/api/cron/hourly-report" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
