@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
 // Fix Leaflet's default icon path issues in Next.js
@@ -45,7 +44,7 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
       zoom={11} 
       scrollWheelZoom={true} 
       className="h-full w-full rounded-xl z-0"
-      style={{ background: '#0f172a' }} // Matches bg-slate-900
+      style={{ height: '100%', width: '100%', background: '#0f172a' }} // Matches bg-slate-900
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
