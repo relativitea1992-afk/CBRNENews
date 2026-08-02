@@ -120,5 +120,14 @@ ${triage.advisory ? `<b>Advisory:</b>\n${triage.advisory}\n` : ''}
     }
   }
 
+  // Log the execution to SystemLog
+  await prisma.systemLog.create({
+    data: {
+      jobName: 'fetch-news',
+      status: 'SUCCESS',
+      details: `Processed ${processedCount} new articles. Found ${threatCount} relevant threats.`
+    }
+  });
+
   return NextResponse.json({ success: true, processedCount, threatCount });
 }
