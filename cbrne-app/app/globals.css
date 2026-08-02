@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "leaflet/dist/leaflet.css";
 @theme {
   --color-slate-950: #020617;
   --color-slate-900: #0f172a;

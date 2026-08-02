@@ -34,7 +34,7 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
     setMounted(true);
   }, []);
 
-  if (!mounted) return <div className="h-full w-full bg-slate-900 animate-pulse rounded-xl border border-slate-700"></div>;
+  if (!mounted) return <div className="absolute inset-0 bg-slate-900 animate-pulse rounded-xl border border-slate-700"></div>;
 
   const center: [number, number] = [1.3521, 103.8198]; // Singapore center
 
@@ -43,8 +43,8 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
       center={center} 
       zoom={11} 
       scrollWheelZoom={true} 
-      className="h-full w-full rounded-xl z-0"
-      style={{ height: '100%', width: '100%', background: '#0f172a' }} // Matches bg-slate-900
+      className="absolute inset-0 z-0 rounded-xl"
+      style={{ background: '#0f172a' }} // Matches bg-slate-900
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
