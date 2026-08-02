@@ -50,14 +50,43 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. Construct the Hourly Report Message
+    // 4. Check NewsAPI Linkage
+    let newsApiStatus = 'Unknown';
+    try {
+      const newsApiKey = process.env.NEWSAPI_KEY;
+      if (newsApiKey) {
+        const start = Date.now();
+        const res = await fetch(`https://newsapi.org/v2/top-headlines?country=sg&pageSize=1&apiKey=${newsApiKey}`);
+        const latency = Date.now() - start;
+        newsApiStatus = res.ok ? `✅ ONLINE (${latency}ms)` : `❌ ERROR (${res.status} ${res.statusText})`;
+      } else {
+        newsApiStatus = `⚠️ MISSING API KEY`;
+      }
+    } catch (error: any) {
+      newsApiStatus = `❌ FAILED (${error.message || 'Unknown'})`;
+    }
+
+    // 5. Check CNA RSS Linkage
+    let cnaRssStatus = 'Unknown';
+    try {
+      const start = Date.now();
+      const res = await fetch('https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml');
+      const latency = Date.now() - start;
+      cnaRssStatus = res.ok ? `✅ ONLINE (${latency}ms)` : `❌ ERROR (${res.status} ${res.statusText})`;
+    } catch (error: any) {
+      cnaRssStatus = `❌ FAILED (${error.message || 'Unknown'})`;
+    }
+
+    // 6. Construct the Hourly Report Message
     const reportMsg = `📊 <b>SYSTEM HOURLY REPORT</b> 📊
 
-<b>News Monitoring API</b>
+<b>News Monitoring Cron Job</b>
 ${newsStatusMsg}
 
-<b>Gemini AI Triage Engine</b>
-<b>Status:</b> ${geminiStatus}
+<b>System Linkages & APIs</b>
+<b>Gemini AI Engine:</b> ${geminiStatus}
+<b>NewsAPI Link:</b> ${newsApiStatus}
+<b>CNA RSS Link:</b> ${cnaRssStatus}
 
 <i>Report generated automatically.</i>`;
 
