@@ -8,21 +8,20 @@ async function main() {
   console.log('Database cleared.');
 
   const article = {
-    title: 'Chemical leak involving spent inorganic acid detected in Pasir Gudang',
-    content: `PASIR GUDANG - A chemical leak involving a tank containing spent inorganic acid has been detected at a factory in the Pasir Gudang Industrial Area in Johor.
+    title: 'BREAKING: Catastrophic Meltdown Reported at Batam Nuclear Facility; Radioactive Plume Drifting Towards Singapore',
+    content: `SINGAPORE — Authorities have confirmed a full core meltdown at the Batam Experimental Energy Station early this morning, triggered by an unmitigated Loss of Coolant Accident (LOCA). The cascading thermal failure has resulted in a critical breach of primary and secondary containment structures, releasing a massive payload of aerosolized fission products into the atmosphere.
+    
+The National Environment Agency (NEA), which operates a network of over 40 environmental radiation monitoring stations islandwide, has detected highly elevated, non-linear spikes in ambient background radiation along the southern coastal sectors. Immediate shelter-in-place protocols have been activated for all residents in the Sentosa, Keppel, and Marina Bay districts.
 
-A Johor Fire and Rescue Department spokesman said they received a report about the incident at a factory located on Jalan Keluli .
+Radiological Source Term and Dispersion Mechanics
+The release is currently characterized by an intense emission of volatile radionuclides, predominantly Noble Gases and Iodine-131 ($^{131}\\text{I}$). The atmospheric dispersion of this unscrubbed radioactive plume is being dictated by current meteorological variables over the Singapore Strait.
 
-“A team from the Pasir Gudang Fire and Rescue Station was dispatched to the scene and arrived at 12.08am.
+Release Geometry: Ground-level and elevated releases combined, with an effective thermal buoyancy height ($H$) of 150 meters.
+Meteorological Vectors: Prevailing winds are originating from 160° (South-Southeast) and pushing the plume directly toward a 340° (North-Northwest) trajectory.
+Atmospheric Stability: Current conditions reflect Pasquill-Gifford Class D (neutral stability). When combined with a steady mean wind speed of 5.2 m/s (18.72 km/h), the plume is maintaining a dense, highly concentrated centerline with moderate lateral dispersion.
 
-“Firefighters found that a 20000 litre industrial tank containing spent inorganic acid, classified as scheduled waste, had developed a leak,” he said.
-
-The spokesman added the operation was carried out in collaboration with the Environment Department and firefighters monitored the situation to ensure public and environmental safety.
-
-The Fire Department said factory management transferred remaining chemical waste into a scrubber to prevent further release of harzardous substances.
-
-“The situation was currently still not under control and multiple injuries were reported. Johor authorities has initiated mass evacuation of surrounding areas and metereological reports have reported strong winds towards punggol direction in singapore`,
-    url: 'https://example.com/cna-chemical-leak-' + Date.now(),
+Time to First Arrival (TFA): Given the 22-kilometer distance from the release locus to the Sentosa coastline, transit time was accurately modeled at approximately 1.17 hours from the time of containment breach.`,
+    url: 'https://example.com/cna-nuclear-meltdown-' + Date.now(),
     source: 'CNA / Multiple News APIs',
     publishedAt: new Date(),
   };
