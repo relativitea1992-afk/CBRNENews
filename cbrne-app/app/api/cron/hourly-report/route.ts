@@ -50,7 +50,7 @@ export async function generateHourlyReport() {
     const newsApiKey = process.env.NEWSAPI_KEY;
     if (newsApiKey) {
       const start = Date.now();
-      const res = await fetch(`https://newsapi.org/v2/top-headlines?country=sg&pageSize=1&apiKey=${newsApiKey}`);
+      const res = await fetch(`https://newsapi.org/v2/everything?q=singapore&sortBy=publishedAt&language=en&pageSize=1&apiKey=${newsApiKey}`);
       const latency = Date.now() - start;
       if (res.ok) {
         newsApiStatus = `✅ ONLINE (${latency}ms)`;
