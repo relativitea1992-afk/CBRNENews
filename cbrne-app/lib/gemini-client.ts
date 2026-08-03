@@ -61,4 +61,45 @@ export async function geminiGenerate(options: GeminiRequestOptions): Promise<Gem
   throw lastError || new Error('All Gemini models failed');
 }
 
+export interface ModelStatus {
+  model: string;
+  status: 'online' | 'rate_limited' | 'error';
+  latencyMs?: number;
+  error?: string;
+}
+
+/**
+ * Pings every model in the fallback chain individually and returns
+ * per-model status. Used for the hourly system report.
+ */
+export async function checkAllModels(): Promise<ModelStatus[]> {
+  const results: ModelStatus[] = [];
+
+  for (const model of MODEL_FALLBACK_CHAIN) {
+    try {
+      const start = Date.now();
+      const response = await ai.models.generateContent({
+        model,
+        contents: 'Reply with "OK" if you are online.',
+      });
+      const latencyMs = Date.now() - start;
+
+      if (response.text?.includes('OK')) {
+        results.push({ model, status: 'online', latencyMs });
+      } else {
+        results.push({ model, status: 'online', latencyMs });
+      }
+    } catch (error: any) {
+      const status = error?.status || error?.httpStatusCode;
+      if (status === 429) {
+        results.push({ model, status: 'rate_limited', error: 'Quota exceeded' });
+      } else {
+        results.push({ model, status: 'error', error: error.message || `HTTP ${status}` });
+      }
+    }
+  }
+
+  return results;
+}
+
 export { ai, MODEL_FALLBACK_CHAIN };

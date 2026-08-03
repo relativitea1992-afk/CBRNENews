@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendTelegramMessage } from '@/lib/telegram';
-import { geminiGenerate } from '@/lib/gemini-client';
+import { geminiGenerate, checkAllModels } from '@/lib/gemini-client';
 
 export const maxDuration = 60; // 1 minute max duration
 
@@ -17,32 +17,23 @@ export async function generateHourlyReport() {
     newsStatusMsg = `✅ <b>Last Checked:</b> ${lastRun.createdAt.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}\n<b>Outcome:</b> ${lastRun.details || lastRun.status}`;
   }
 
-  // 2. Perform High-Level System Check on Gemini API (with model fallback)
-  let geminiStatus = 'Unknown';
-  let geminiLatency = 0;
-  try {
-    const start = Date.now();
-    const response = await geminiGenerate({
-      contents: 'Reply with "OK" if you are online.',
-    });
-    geminiLatency = Date.now() - start;
-    
-    if (response.text?.includes('OK')) {
-      geminiStatus = `✅ ONLINE via ${response.modelUsed} (${geminiLatency}ms)`;
+  // 2. Check ALL Gemini models individually
+  const modelStatuses = await checkAllModels();
+  let geminiStatusSection = '';
+  for (const ms of modelStatuses) {
+    if (ms.status === 'online') {
+      geminiStatusSection += `  ✅ ${ms.model} — ONLINE (${ms.latencyMs}ms)\n`;
+    } else if (ms.status === 'rate_limited') {
+      geminiStatusSection += `  ⚠️ ${ms.model} — RATE LIMITED\n`;
     } else {
-      geminiStatus = `⚠️ ONLINE BUT UNEXPECTED RESPONSE via ${response.modelUsed} (${geminiLatency}ms)`;
-    }
-  } catch (error: any) {
-    if (error.status === 429) {
-        geminiStatus = `❌ ALL MODELS RATE LIMITED`;
-    } else {
-        geminiStatus = `❌ ERROR (${error.message || 'Unknown'})`;
+      geminiStatusSection += `  ❌ ${ms.model} — ERROR (${ms.error})\n`;
     }
   }
 
-  // 3. Check NewsAPI Linkage + extract top headline
+  // 3. Check NewsAPI Linkage + extract top headline and content
   let newsApiStatus = 'Unknown';
   let newsApiTopHeadline = '';
+  let newsApiTopContent = '';
   try {
     const newsApiKey = process.env.NEWSAPI_KEY;
     if (newsApiKey) {
@@ -53,7 +44,9 @@ export async function generateHourlyReport() {
         newsApiStatus = `✅ ONLINE (${latency}ms)`;
         const data = await res.json();
         if (data.articles?.length > 0) {
-          newsApiTopHeadline = data.articles[0].title || '';
+          const article = data.articles[0];
+          newsApiTopHeadline = article.title || '';
+          newsApiTopContent = [article.title, article.description, article.content].filter(Boolean).join('. ');
         }
       } else {
         newsApiStatus = `❌ ERROR (${res.status} ${res.statusText})`;
@@ -65,9 +58,10 @@ export async function generateHourlyReport() {
     newsApiStatus = `❌ FAILED (${error.message || 'Unknown'})`;
   }
 
-  // 4. Check CNA RSS Linkage + extract top headline
+  // 4. Check CNA RSS Linkage + extract top headline and description
   let cnaRssStatus = 'Unknown';
   let cnaTopHeadline = '';
+  let cnaTopContent = '';
   try {
     const start = Date.now();
     const res = await fetch('https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml');
@@ -83,6 +77,18 @@ export async function generateHourlyReport() {
         const simpleTitleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>(.*?)<\/title>/);
         if (simpleTitleMatch) {
           cnaTopHeadline = simpleTitleMatch[1];
+        }
+      }
+      // Also extract description
+      const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description><!\[CDATA\[(.*?)\]\]><\/description>/);
+      if (descMatch) {
+        cnaTopContent = [cnaTopHeadline, descMatch[1]].filter(Boolean).join('. ');
+      } else {
+        const simpleDescMatch = xml.match(/<item[^>]*>[\s\S]*?<description>(.*?)<\/description>/);
+        if (simpleDescMatch) {
+          cnaTopContent = [cnaTopHeadline, simpleDescMatch[1]].filter(Boolean).join('. ');
+        } else {
+          cnaTopContent = cnaTopHeadline;
         }
       }
     } else {
@@ -142,19 +148,22 @@ export async function generateHourlyReport() {
       threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
     }
 
-    // Run headlines through Gemini for quick CBRNE assessment (with model fallback)
-    if (newsApiTopHeadline || cnaTopHeadline) {
+    // Run extracted news through Gemini for CBRNE assessment (with model fallback)
+    if (newsApiTopContent || cnaTopContent) {
       try {
-        const headlines = [newsApiTopHeadline, cnaTopHeadline].filter(Boolean).join('\n');
+        const newsContent = [
+          newsApiTopContent ? `[NewsAPI Article]\n${newsApiTopContent}` : '',
+          cnaTopContent ? `[CNA Article]\n${cnaTopContent}` : '',
+        ].filter(Boolean).join('\n\n');
         const geminiAnalysis = await geminiGenerate({
           contents: `You are a CBRNE (Chemical, Biological, Radiological, Nuclear, Explosive) threat analyst monitoring Singapore.
 
-Below are the top headlines from news feeds right now. Provide a brief 2-3 sentence assessment:
+Below are the top extracted news articles from live feeds. Analyze the full content and provide a brief 2-3 sentence assessment:
 1. Is there any CBRNE relevance? (Yes/No + why)
-2. General security posture for Singapore based on these headlines.
+2. General security posture for Singapore based on this news.
 
-Headlines:
-${headlines}
+News Content:
+${newsContent}
 
 Reply concisely. No markdown, plain text only.`,
         });
@@ -175,8 +184,8 @@ Reply concisely. No markdown, plain text only.`,
 ${newsStatusMsg}
 ${threatSection}
 <b>System Linkages & APIs</b>
-<b>Gemini AI Engine:</b> ${geminiStatus}
-<b>NewsAPI Link:</b> ${newsApiStatus}
+<b>Gemini AI Engine:</b>
+${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 <b>CNA RSS Link:</b> ${cnaRssStatus}
 <b>Supabase Link:</b> ${supabaseStatus}
 
