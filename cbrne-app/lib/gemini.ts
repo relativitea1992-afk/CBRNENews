@@ -1,8 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-});
+import { geminiGenerate } from './gemini-client';
 
 export interface TriageResult {
   isRelevant: boolean;
@@ -41,8 +37,7 @@ ${articleText}
 `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+    const response = await geminiGenerate({
       contents: prompt,
       config: {
         responseMimeType: 'application/json',

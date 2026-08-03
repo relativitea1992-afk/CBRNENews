@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendTelegramMessage } from '@/lib/telegram';
-import { GoogleGenAI } from '@google/genai';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { geminiGenerate } from '@/lib/gemini-client';
 
 export const maxDuration = 60; // 1 minute max duration
 
@@ -19,25 +17,24 @@ export async function generateHourlyReport() {
     newsStatusMsg = `✅ <b>Last Checked:</b> ${lastRun.createdAt.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}\n<b>Outcome:</b> ${lastRun.details || lastRun.status}`;
   }
 
-  // 2. Perform High-Level System Check on Gemini API
+  // 2. Perform High-Level System Check on Gemini API (with model fallback)
   let geminiStatus = 'Unknown';
   let geminiLatency = 0;
   try {
     const start = Date.now();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+    const response = await geminiGenerate({
       contents: 'Reply with "OK" if you are online.',
     });
     geminiLatency = Date.now() - start;
     
     if (response.text?.includes('OK')) {
-      geminiStatus = `✅ ONLINE (Latency: ${geminiLatency}ms)`;
+      geminiStatus = `✅ ONLINE via ${response.modelUsed} (${geminiLatency}ms)`;
     } else {
-      geminiStatus = `⚠️ ONLINE BUT UNEXPECTED RESPONSE (Latency: ${geminiLatency}ms)`;
+      geminiStatus = `⚠️ ONLINE BUT UNEXPECTED RESPONSE via ${response.modelUsed} (${geminiLatency}ms)`;
     }
   } catch (error: any) {
     if (error.status === 429) {
-        geminiStatus = `❌ RATE LIMITED (Quota Exceeded)`;
+        geminiStatus = `❌ ALL MODELS RATE LIMITED`;
     } else {
         geminiStatus = `❌ ERROR (${error.message || 'Unknown'})`;
     }
@@ -145,12 +142,11 @@ export async function generateHourlyReport() {
       threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
     }
 
-    // Run headlines through Gemini for quick CBRNE assessment
+    // Run headlines through Gemini for quick CBRNE assessment (with model fallback)
     if (newsApiTopHeadline || cnaTopHeadline) {
       try {
         const headlines = [newsApiTopHeadline, cnaTopHeadline].filter(Boolean).join('\n');
-        const geminiAnalysis = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+        const geminiAnalysis = await geminiGenerate({
           contents: `You are a CBRNE (Chemical, Biological, Radiological, Nuclear, Explosive) threat analyst monitoring Singapore.
 
 Below are the top headlines from news feeds right now. Provide a brief 2-3 sentence assessment:
@@ -164,10 +160,10 @@ Reply concisely. No markdown, plain text only.`,
         });
         const analysis = geminiAnalysis.text?.trim();
         if (analysis) {
-          threatSection += `\n🤖 <b>Gemini Assessment:</b>\n<i>${analysis}</i>\n`;
+          threatSection += `\n🤖 <b>Gemini Assessment (${geminiAnalysis.modelUsed}):</b>\n<i>${analysis}</i>\n`;
         }
       } catch {
-        threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>Unavailable</i>\n`;
+        threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>All models unavailable</i>\n`;
       }
     }
   }
