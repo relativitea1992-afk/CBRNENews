@@ -51,12 +51,59 @@ export async function POST(request: NextRequest) {
         if (!latestIncident) {
           await sendTelegramMessage(chatId, "No relevant threats found in the database.");
         } else {
-           const msg = `🔍 <b>LATEST THREAT</b>\n\n<b>Headline:</b> ${latestIncident.headline}\n<b>Type:</b> ${latestIncident.type}\n<b>Summary:</b> ${latestIncident.summary}\n\n<b>Link:</b> ${latestIncident.sourceUrl}`;
-           await sendTelegramMessage(chatId, msg, { lat: latestIncident.lat, lon: latestIncident.lng, type: latestIncident.type });
+           let msg = `🔍 <b>LATEST THREAT</b>\n\n<b>Headline:</b> ${latestIncident.headline}\n<b>Type:</b> ${latestIncident.type}\n<b>Summary:</b> ${latestIncident.summary}`;
+           
+           if (latestIncident.advisory) {
+             msg += `\n\n<b>Advisory:</b>\n${latestIncident.advisory}`;
+           }
+           
+           msg += `\n\n<b>Model Used:</b> ${latestIncident.modelUsed || 'Unknown'}`;
+           msg += `\n<b>Link:</b> ${latestIncident.sourceUrl}`;
+           await sendTelegramMessage(chatId, msg, { lat: latestIncident.lat, lon: latestIncident.lng, type: latestIncident.type as any });
         }
       } else if (text.startsWith('/test')) {
         const { generateHourlyReport } = await import('../cron/hourly-report/route');
         await generateHourlyReport();
+      } else if (text.startsWith('/clear')) {
+        const deleted = await prisma.incident.deleteMany({
+          where: { isRelevant: true }
+        });
+        await sendTelegramMessage(chatId, `🧹 <b>Alerts Cleared:</b> ${deleted.count} active threat(s) have been removed from the dashboard.`);
+      } else if (text.startsWith('/snapshot')) {
+        const dashboardBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
+        const dashboardUrl = `${dashboardBaseUrl}?snapshot=true`;
+        const microlinkUrl = `https://api.microlink.io?url=${encodeURIComponent(dashboardUrl)}&screenshot=true&meta=false&embed=screenshot.url&waitFor=5000&adblock=false&force=true`;
+        
+        await sendTelegramMessage(chatId, "📸 <b>Taking snapshot of the live dashboard...</b>");
+        
+        try {
+          const imageReq = await fetch(microlinkUrl);
+          if (imageReq.ok) {
+            const arrayBuffer = await imageReq.arrayBuffer();
+            const blob = new Blob([arrayBuffer], { type: 'image/png' });
+            
+            const formData = new FormData();
+            formData.append('chat_id', chatId);
+            formData.append('photo', blob, 'dashboard.png');
+            formData.append('caption', `Live Dashboard Snapshot: ${dashboardUrl}`);
+            
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            const photoResponse = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+              method: 'POST',
+              body: formData,
+            });
+            if (!photoResponse.ok) {
+              console.error('Failed to send snapshot photo:', await photoResponse.text());
+              await sendTelegramMessage(chatId, "❌ Failed to send dashboard snapshot photo.");
+            }
+          } else {
+            console.error('Failed to fetch snapshot from Microlink:', await imageReq.text());
+            await sendTelegramMessage(chatId, "❌ Failed to generate dashboard snapshot.");
+          }
+        } catch (e) {
+          console.error('Error generating snapshot:', e);
+          await sendTelegramMessage(chatId, "❌ Error generating dashboard snapshot.");
+        }
       }
     }
 

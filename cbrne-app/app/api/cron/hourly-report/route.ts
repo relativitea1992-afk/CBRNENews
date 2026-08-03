@@ -12,9 +12,10 @@ export async function generateHourlyReport() {
     orderBy: { createdAt: 'desc' }
   });
 
-  let newsStatusMsg = '⚠️ No recent news monitoring data found.';
+  let newsStatusMsg = '⚠️ <i>Background `fetch-news` cron job has not run yet.</i>';
   if (lastRun) {
-    newsStatusMsg = `✅ <b>Last Checked:</b> ${lastRun.createdAt.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}\n<b>Outcome:</b> ${lastRun.details || lastRun.status}`;
+    const outcome = lastRun.details || lastRun.status;
+    newsStatusMsg = `✅ <b>Last Checked:</b> ${lastRun.createdAt.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}\n<b>Outcome:</b> ${outcome}`;
   }
 
   // 2. Check ALL Gemini models individually
@@ -61,51 +62,56 @@ export async function generateHourlyReport() {
 
   // 4. Check CNA RSS Linkage + extract top headline and description
   let cnaRssStatus = 'Unknown';
-  let cnaTopHeadline = '';
   let cnaTopContent = '';
+  const cnaHeadlines = new Set<string>();
+  const uniqueHeadlinesWithSource: { source: string, headline: string }[] = [];
+
   const cnaFeeds = [
-    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml', // Latest news
-    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416', // Singapore
-    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471', // Today
-    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311', // World
-    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511' // Asia
+    { name: 'Latest', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml' },
+    { name: 'Singapore', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416' },
+    { name: 'Today', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471' },
+    { name: 'World', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311' },
+    { name: 'Asia', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511' }
   ];
 
-  for (const feedUrl of cnaFeeds) {
+  let cnaSuccessCount = 0;
+  let totalCnaLatency = 0;
+
+  for (const feed of cnaFeeds) {
     try {
       const start = Date.now();
-      const res = await fetch(feedUrl);
+      const res = await fetch(feed.url);
       const latency = Date.now() - start;
       if (res.ok) {
-        cnaRssStatus = `✅ ONLINE (${latency}ms)`;
+        cnaSuccessCount++;
+        totalCnaLatency += latency;
         const xml = await res.text();
-        const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>/);
+        const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
         if (titleMatch) {
-          cnaTopHeadline = titleMatch[1];
-        } else {
-          const simpleTitleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>(.*?)<\/title>/);
-          if (simpleTitleMatch) {
-            cnaTopHeadline = simpleTitleMatch[1];
+          const title = titleMatch[1].replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
+          if (!cnaHeadlines.has(title)) {
+            cnaHeadlines.add(title);
+            uniqueHeadlinesWithSource.push({ source: feed.name, headline: title });
+
+            const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description>([\s\S]*?)<\/description>/i);
+            if (descMatch) {
+              const descClean = descMatch[1].replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
+              cnaTopContent += `[CNA ${feed.name}] ${title}. ${descClean}\n\n`;
+            } else {
+              cnaTopContent += `[CNA ${feed.name}] ${title}\n\n`;
+            }
           }
         }
-        const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description><!\[CDATA\[(.*?)\]\]><\/description>/);
-        if (descMatch) {
-          cnaTopContent = [cnaTopHeadline, descMatch[1]].filter(Boolean).join('. ');
-        } else {
-          const simpleDescMatch = xml.match(/<item[^>]*>[\s\S]*?<description>(.*?)<\/description>/);
-          if (simpleDescMatch) {
-            cnaTopContent = [cnaTopHeadline, simpleDescMatch[1]].filter(Boolean).join('. ');
-          } else {
-            cnaTopContent = cnaTopHeadline;
-          }
-        }
-        break; // Stop at first successful feed
-      } else {
-        cnaRssStatus = `❌ ERROR (${res.status} ${res.statusText})`;
       }
     } catch (error: any) {
-      cnaRssStatus = `❌ FAILED (${error.message || 'Unknown'})`;
+      // Ignore individual feed errors, we will report overall status
     }
+  }
+
+  if (cnaSuccessCount > 0) {
+    cnaRssStatus = `✅ ONLINE (${Math.round(totalCnaLatency / cnaSuccessCount)}ms avg, ${cnaSuccessCount}/${cnaFeeds.length} feeds)`;
+  } else {
+    cnaRssStatus = `❌ FAILED (All feeds failed)`;
   }
 
   // 5. Check Supabase Linkage
@@ -145,45 +151,50 @@ export async function generateHourlyReport() {
       threatSection += `<i>...and ${recentThreats.length - 3} more</i>\n`;
     }
   } else {
-    // Heartbeat: no threats, show top news from each source as proof of life
-    threatSection = `\n💚 <b>No CBRNE threats detected (Past 1hr)</b>\n\n<b>💓 Heartbeat — Top News Pulse:</b>\n`;
-    if (newsApiTopHeadline) {
-      threatSection += `📰 <b>NewsAPI:</b> ${newsApiTopHeadline}\n`;
-    } else {
-      threatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
-    }
-    if (cnaTopHeadline) {
-      threatSection += `📡 <b>CNA RSS:</b> ${cnaTopHeadline}\n`;
-    } else {
-      threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
-    }
+    threatSection = `\n💚 <b>No CBRNE threats detected (Past 1hr)</b>\n`;
+  }
 
-    // Run extracted news through Gemini for CBRNE assessment (with model fallback)
-    if (newsApiTopContent || cnaTopContent) {
-      try {
-        const newsContent = [
-          newsApiTopContent ? `[NewsAPI Article]\n${newsApiTopContent}` : '',
-          cnaTopContent ? `[CNA Article]\n${cnaTopContent}` : '',
-        ].filter(Boolean).join('\n\n');
-        const geminiAnalysis = await geminiGenerate({
-          contents: `You are a CBRNE (Chemical, Biological, Radiological, Nuclear, Explosive) threat analyst monitoring Singapore.
+  // Heartbeat: show top news from each source as proof of life
+  threatSection += `\n<b>💓 Heartbeat — Top News Pulse:</b>\n`;
+  if (newsApiTopHeadline) {
+    threatSection += `📰 <b>NewsAPI:</b> ${newsApiTopHeadline}\n`;
+  } else {
+    threatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
+  }
+  if (uniqueHeadlinesWithSource.length > 0) {
+    for (const item of uniqueHeadlinesWithSource) {
+      threatSection += `📡 <b>CNA RSS (${item.source}):</b> ${item.headline}\n`;
+    }
+  } else {
+    threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
+  }
 
-Below are the top extracted news articles from live feeds. Analyze the full content and provide a brief 2-3 sentence assessment:
-1. Is there any CBRNE relevance? (Yes/No + why)
-2. General security posture for Singapore based on this news.
+  // Run extracted news through Gemini for CBRNE assessment (with model fallback)
+  if (newsApiTopContent || cnaTopContent) {
+    try {
+      const newsContent = [
+        newsApiTopContent ? `[NewsAPI Article]\n${newsApiTopContent}` : '',
+        cnaTopContent ? `[CNA Articles]\n${cnaTopContent.trim()}` : '',
+      ].filter(Boolean).join('\n\n');
+      const geminiAnalysis = await geminiGenerate({
+        contents: `You are a CBRNE (Chemical, Biological, Radiological, Nuclear, Explosive) threat analyst monitoring Singapore.
+
+Below are the top extracted news articles from live feeds. Analyze the full content and provide a detailed threat assessment and advisory:
+1. Detailed Assessment: Is there any CBRNE relevance? (Yes/No + brief reasoning).
+2. General Security Posture: Provide a thorough analysis of the general security posture for Singapore based on this news. If there is no threat or elevation of the current security posture, keep this extremely brief (e.g., "Normal" or "No change").
+3. Advisory: Provide an actionable advisory based strictly on your assessment. If there is a potential threat, clearly outline steps for residents (Indoors/Outdoors/Medical). If there is no threat, do not provide an advisory.
 
 News Content:
 ${newsContent}
 
-Reply concisely. No markdown, plain text only.`,
-        });
-        const analysis = geminiAnalysis.text?.trim();
-        if (analysis) {
-          threatSection += `\n🤖 <b>Gemini Assessment (${geminiAnalysis.modelUsed}):</b>\n<i>${analysis}</i>\n`;
-        }
-      } catch {
-        threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>All models unavailable</i>\n`;
+Reply concisely but comprehensively. When using common widely known acronyms, use ONLY the acronym and completely omit the full long words to shorten the output. You may use standard Telegram HTML tags like <b> for bolding. Do NOT use markdown (**).`,
+      });
+      const analysis = geminiAnalysis.text?.trim();
+      if (analysis) {
+        threatSection += `\n🤖 <b>Gemini Assessment (${geminiAnalysis.modelUsed}):</b>\n<i>${analysis}</i>\n`;
       }
+    } catch {
+      threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>All models unavailable</i>\n`;
     }
   }
 

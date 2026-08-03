@@ -40,7 +40,10 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
         if (options.type === 'Explosive') markerColor = 'rd'; // red
         if (!options.type) markerColor = 'lb'; // light blue (general)
 
-        const photoUrl = `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=10&l=map&lang=en_US&size=600,400&pt=${options.lon},${options.lat},pm2${markerColor}m`;
+        const googleMapsKey = process.env.GOOGLE_MAPS_API_KEY;
+        const photoUrl = googleMapsKey 
+          ? `https://maps.googleapis.com/maps/api/staticmap?center=${options.lat},${options.lon}&zoom=12&size=600x400&markers=color:red%7C${options.lat},${options.lon}&key=${googleMapsKey}`
+          : `https://static-maps.yandex.ru/1.x/?ll=${options.lon},${options.lat}&z=10&l=map&lang=en_US&size=600,400&pt=${options.lon},${options.lat},pm2${markerColor}m`;
         
         try {
           const imageReq = await fetch(photoUrl);

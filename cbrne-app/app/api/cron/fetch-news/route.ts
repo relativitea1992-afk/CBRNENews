@@ -54,8 +54,8 @@ export async function GET(request: Request) {
     for (const feedUrl of cnaFeeds) {
       try {
         const feed = await parser.parseURL(feedUrl);
-        // Take top 5 from each category to avoid overloading
-        feed.items.slice(0, 5).forEach(item => {
+        // Take top 10 from each category to avoid overloading
+        feed.items.slice(0, 10).forEach(item => {
           articlesToProcess.push({
             title: item.title || '',
             content: item.contentSnippet || item.content || '',
@@ -74,6 +74,8 @@ export async function GET(request: Request) {
 
   let processedCount = 0;
   let threatCount = 0;
+  const sourceCounts: Record<string, number> = {};
+  const modelsUsed = new Set<string>();
 
   for (const article of articlesToProcess) {
     if (!article.url || !article.title) continue;
@@ -84,6 +86,10 @@ export async function GET(request: Request) {
 
     const triage = await triageNewsArticle(`Title: ${article.title}\n\nContent: ${article.content}`);
     processedCount++;
+    sourceCounts[article.source] = (sourceCounts[article.source] || 0) + 1;
+    if (triage && triage.modelUsed) {
+      modelsUsed.add(triage.modelUsed);
+    }
 
     if (triage && triage.isRelevant) {
       threatCount++;
@@ -100,6 +106,7 @@ export async function GET(request: Request) {
           lng: triage.lng,
           type: triage.type,
           advisory: triage.advisory,
+          modelUsed: triage.modelUsed || 'Unknown',
           isRelevant: true,
         }
       });
@@ -111,10 +118,10 @@ export async function GET(request: Request) {
 <b>Type:</b> ${triage.type}
 <b>Source:</b> ${article.source}
 
-<b>Impact Summary:</b>
+<b>Threat Assessment:</b>
 ${triage.summary}
 
-${triage.advisory ? `<b>Advisory:</b>\n${triage.advisory}\n` : ''}
+${triage.advisory ? `<b>Advisory:</b>\n${triage.advisory}\n\n` : ''}<b>Model Used:</b> ${triage.modelUsed || 'Unknown'}
 <b>Link:</b> ${article.url}`;
 
       await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
@@ -133,12 +140,16 @@ ${triage.advisory ? `<b>Advisory:</b>\n${triage.advisory}\n` : ''}
     }
   }
 
+  const sourceBreakdown = Object.entries(sourceCounts).map(([src, count]) => `${src}: ${count}`).join(', ');
+  const breakdownStr = sourceBreakdown ? ` (${sourceBreakdown})` : '';
+  const modelsStr = modelsUsed.size > 0 ? ` using [${Array.from(modelsUsed).join(', ')}]` : '';
+
   // Log the execution to SystemLog
   await prisma.systemLog.create({
     data: {
       jobName: 'fetch-news',
       status: 'SUCCESS',
-      details: `Processed ${processedCount} new articles. Found ${threatCount} relevant threats.`
+      details: `Verified ${processedCount} new articles via Gemini${modelsStr}${breakdownStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
     }
   });
 

@@ -8,6 +8,7 @@ export interface TriageResult {
   lng: number | null;
   type: string;
   advisory?: string;
+  modelUsed?: string;
 }
 
 export async function triageNewsArticle(articleText: string): Promise<TriageResult | null> {
@@ -24,8 +25,8 @@ Consider incidents in Singapore, or nearby border regions like Johor (e.g. Pasir
 Return the result strictly as a JSON object with the following fields:
 - "isRelevant" (boolean): true if it represents a relevant CBRNE/Odour threat to Singapore, false otherwise.
 - "headline" (string): A concise, punchy headline for the alert.
-- "summary" (string): A 1-2 sentence summary of the incident and its potential impact on Singapore. Include specific time details and estimation of arrival times for any threats/plumes if the information is available in the text.
-- "advisory" (string): Provide an actionable advisory highlighting potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details (such as wind direction). Analyze the exact risk (e.g., toxicity, flammability, radiation) if information is available. Clearly state what residents should do if they are INDOORS (e.g., close windows, turn off AC) and what they should do if they are OUTDOORS (e.g., seek shelter, avoid the area). Furthermore, include specific CBRNE medical advice (e.g., decontamination steps like washing with soap and water, symptoms to watch out for, when to seek emergency medical attention, or specific first-aid measures depending on the exact chemical, biological, or radiological agent). Use the exact string [BREAK] to separate these points into clear paragraphs (e.g. Risk, Indoors, Outdoors, Medical Advice). Do not use actual line breaks or newline characters in the JSON string.
+- "summary" (string): A detailed, comprehensive threat assessment of the incident. Explain the exact nature of the threat, its severity, and provide a thorough analysis of its potential impact on Singapore. Include specific time details, environmental factors (like wind/weather), and estimation of arrival times for any threats/plumes if the information is available in the text.
+- "advisory" (string): Provide a highly detailed, actionable advisory based strictly on the threat assessment you just formulated. Highlight potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details. Analyze the exact risk (e.g., toxicity, flammability, radiation). Clearly state what residents should do if they are INDOORS (e.g., close windows, turn off AC) and what they should do if they are OUTDOORS (e.g., seek shelter, avoid the area). Furthermore, include specific CBRNE medical advice (e.g., decontamination steps like washing with soap and water, symptoms to watch out for, when to seek emergency medical attention, or specific first-aid measures depending on the exact agent). Use the exact string [BREAK] to separate these points into clear paragraphs (e.g. Risk, Indoors, Outdoors, Medical Advice). Do not use actual line breaks or newline characters in the JSON string.
 - "lat" (number or null): Latitude of the incident location. Null if unknown.
 - "lng" (number or null): Longitude of the incident location. Null if unknown.
 - "type" (string): Classify as "Chemical", "Biological", "Radiological", "Nuclear", "Explosive", "Odour", or "Unknown".
@@ -58,6 +59,7 @@ ${articleText}
         if (result.advisory) {
           result.advisory = result.advisory.replace(/\[BREAK\]/g, '\n\n');
         }
+        result.modelUsed = response.modelUsed;
         return result;
       } catch (parseError) {
         console.error('Failed to parse Gemini JSON:', cleanText);

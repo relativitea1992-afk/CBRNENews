@@ -21,6 +21,7 @@ model Incident {
   type        String   @default("Unknown")
   isRelevant  Boolean  @default(true)
   advisory    String?
+  modelUsed   String?
 }
 
 model SystemLog {

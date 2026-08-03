@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet';
+import { useSearchParams } from 'next/navigation';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { renderToString } from 'react-dom/server';
 import { Wind, FlaskConical, Biohazard, Radiation, Bomb } from 'lucide-react';
@@ -18,8 +19,22 @@ type Incident = {
   createdAt: string;
 };
 
+function MapFix() {
+  const map = useMap();
+  useEffect(() => {
+    // Invalidate size repeatedly to handle headless browser rendering quirks where container size changes
+    const timers = [100, 500, 1000, 2500, 4000].map(ms => 
+      setTimeout(() => { map.invalidateSize(); }, ms)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [map]);
+  return null;
+}
+
 export default function Map({ incidents }: { incidents: Incident[] }) {
   const [mounted, setMounted] = useState(false);
+  const searchParams = useSearchParams();
+  const isSnapshot = searchParams.get('snapshot') === 'true';
 
   useEffect(() => {
     setMounted(true);
@@ -28,6 +43,40 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
   if (!mounted) return <div className="absolute inset-0 bg-slate-900 animate-pulse rounded-xl border border-slate-700"></div>;
 
   const center: [number, number] = [1.3521, 103.8198]; // Singapore center
+  
+  const tileUrl = isSnapshot 
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+    : "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}";
+    
+  const attribution = isSnapshot
+    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    : '&copy; <a href="https://maps.google.com">Google Maps</a>';
+
+  if (isSnapshot) {
+    const ptParam = incidents
+      .filter(i => i.latitude && i.longitude)
+      .map(i => {
+        let color = 'pm2rdm'; // default red
+        if (i.type === 'Odour') color = 'pm2ylm';
+        else if (i.type === 'Chemical') color = 'pm2vvm';
+        else if (i.type === 'Biological') color = 'pm2grm';
+        else if (i.type === 'Nuclear' || i.type === 'Radiological') color = 'pm2orm';
+        else if (i.type === 'Explosive') color = 'pm2rdm';
+        return `${i.longitude},${i.latitude},${color}`;
+      })
+      .join('~');
+    
+    const ptQuery = ptParam ? `?pt=${ptParam}` : '';
+    // Use our internal API route to proxy the image fetch to bypass Microlink's IP being blocked by Yandex
+    const staticMapUrl = `/api/proxy-map${ptQuery}`;
+    
+    return (
+      <div className="absolute inset-0 z-0 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={staticMapUrl} alt="Static Map" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+    );
+  }
 
   return (
     <MapContainer 
@@ -37,9 +86,10 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
       className="absolute inset-0 z-0 rounded-xl"
       style={{ height: '100%', width: '100%', background: '#0f172a' }} // Matches bg-slate-900
     >
+      <MapFix />
       <TileLayer
-        attribution='&copy; <a href="https://maps.google.com">Google Maps</a>'
-        url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+        attribution={attribution}
+        url={tileUrl}
       />
       
       {incidents.map((incident) => {
