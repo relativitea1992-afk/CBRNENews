@@ -43,15 +43,24 @@ export async function generateHourlyReport() {
     }
   }
 
-  // 3. Check NewsAPI Linkage
+  // 3. Check NewsAPI Linkage + extract top headline
   let newsApiStatus = 'Unknown';
+  let newsApiTopHeadline = '';
   try {
     const newsApiKey = process.env.NEWSAPI_KEY;
     if (newsApiKey) {
       const start = Date.now();
       const res = await fetch(`https://newsapi.org/v2/top-headlines?country=sg&pageSize=1&apiKey=${newsApiKey}`);
       const latency = Date.now() - start;
-      newsApiStatus = res.ok ? `✅ ONLINE (${latency}ms)` : `❌ ERROR (${res.status} ${res.statusText})`;
+      if (res.ok) {
+        newsApiStatus = `✅ ONLINE (${latency}ms)`;
+        const data = await res.json();
+        if (data.articles?.length > 0) {
+          newsApiTopHeadline = data.articles[0].title || '';
+        }
+      } else {
+        newsApiStatus = `❌ ERROR (${res.status} ${res.statusText})`;
+      }
     } else {
       newsApiStatus = `⚠️ MISSING API KEY`;
     }
@@ -59,13 +68,29 @@ export async function generateHourlyReport() {
     newsApiStatus = `❌ FAILED (${error.message || 'Unknown'})`;
   }
 
-  // 4. Check CNA RSS Linkage
+  // 4. Check CNA RSS Linkage + extract top headline
   let cnaRssStatus = 'Unknown';
+  let cnaTopHeadline = '';
   try {
     const start = Date.now();
     const res = await fetch('https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml');
     const latency = Date.now() - start;
-    cnaRssStatus = res.ok ? `✅ ONLINE (${latency}ms)` : `❌ ERROR (${res.status} ${res.statusText})`;
+    if (res.ok) {
+      cnaRssStatus = `✅ ONLINE (${latency}ms)`;
+      const xml = await res.text();
+      const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>/);
+      if (titleMatch) {
+        cnaTopHeadline = titleMatch[1];
+      } else {
+        // Fallback: try without CDATA
+        const simpleTitleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>(.*?)<\/title>/);
+        if (simpleTitleMatch) {
+          cnaTopHeadline = simpleTitleMatch[1];
+        }
+      }
+    } else {
+      cnaRssStatus = `❌ ERROR (${res.status} ${res.statusText})`;
+    }
   } catch (error: any) {
     cnaRssStatus = `❌ FAILED (${error.message || 'Unknown'})`;
   }
@@ -87,12 +112,46 @@ export async function generateHourlyReport() {
   const vercelRegion = process.env.VERCEL_REGION || 'Local/Unknown';
   const computeStatus = `✅ Region: ${vercelRegion} | RAM: ${memoryMB}MB`;
 
-  // 7. Construct the Hourly Report Message
+  // 7. Check for relevant incidents in the past hour
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recentThreats = await prisma.incident.findMany({
+    where: {
+      createdAt: { gte: oneHourAgo },
+      isRelevant: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  let threatSection = '';
+  if (recentThreats.length > 0) {
+    threatSection = `\n<b>🚨 Threats Detected (Past 1hr):</b> ${recentThreats.length}\n`;
+    for (const t of recentThreats.slice(0, 3)) {
+      threatSection += `• <b>[${t.type}]</b> ${t.headline}\n`;
+    }
+    if (recentThreats.length > 3) {
+      threatSection += `<i>...and ${recentThreats.length - 3} more</i>\n`;
+    }
+  } else {
+    // Heartbeat: no threats, show top news from each source as proof of life
+    threatSection = `\n💚 <b>No CBRNE threats detected (Past 1hr)</b>\n\n<b>💓 Heartbeat — Top News Pulse:</b>\n`;
+    if (newsApiTopHeadline) {
+      threatSection += `📰 <b>NewsAPI:</b> ${newsApiTopHeadline}\n`;
+    } else {
+      threatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
+    }
+    if (cnaTopHeadline) {
+      threatSection += `📡 <b>CNA RSS:</b> ${cnaTopHeadline}\n`;
+    } else {
+      threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
+    }
+  }
+
+  // 8. Construct the Hourly Report Message
   const reportMsg = `📊 <b>SYSTEM HOURLY REPORT</b> 📊
 
 <b>News Monitoring Cron Job</b>
 ${newsStatusMsg}
-
+${threatSection}
 <b>System Linkages & APIs</b>
 <b>Gemini AI Engine:</b> ${geminiStatus}
 <b>NewsAPI Link:</b> ${newsApiStatus}
