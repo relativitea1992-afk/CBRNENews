@@ -21,12 +21,13 @@ export async function generateHourlyReport() {
   const modelStatuses = await checkAllModels();
   let geminiStatusSection = '';
   for (const ms of modelStatuses) {
+    const name = ms.model.replace('gemini-', '');
     if (ms.status === 'online') {
-      geminiStatusSection += `  ✅ ${ms.model} — ONLINE (${ms.latencyMs}ms)\n`;
+      geminiStatusSection += `  ✅ ${name} (${ms.latencyMs}ms)\n`;
     } else if (ms.status === 'rate_limited') {
-      geminiStatusSection += `  ⚠️ ${ms.model} — RATE LIMITED\n`;
+      geminiStatusSection += `  ⚠️ ${name} — Rate limited\n`;
     } else {
-      geminiStatusSection += `  ❌ ${ms.model} — ERROR (${ms.error})\n`;
+      geminiStatusSection += `  ❌ ${name} — ${ms.error || 'Unavailable'}\n`;
     }
   }
 

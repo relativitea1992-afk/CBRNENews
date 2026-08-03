@@ -11,6 +11,7 @@ const MODEL_FALLBACK_CHAIN = [
   'gemini-3.6-flash',
   'gemini-3-flash',
   'gemini-2.5-flash',
+  'gemini-3.5-flash-lite',
 ];
 
 export interface GeminiRequestOptions {
@@ -90,11 +91,13 @@ export async function checkAllModels(): Promise<ModelStatus[]> {
         results.push({ model, status: 'online', latencyMs });
       }
     } catch (error: any) {
-      const status = error?.status || error?.httpStatusCode;
-      if (status === 429) {
-        results.push({ model, status: 'rate_limited', error: 'Quota exceeded' });
+      const code = error?.status || error?.httpStatusCode;
+      if (code === 429) {
+        results.push({ model, status: 'rate_limited' });
+      } else if (code === 404) {
+        results.push({ model, status: 'error', error: 'Not found' });
       } else {
-        results.push({ model, status: 'error', error: error.message || `HTTP ${status}` });
+        results.push({ model, status: 'error', error: `${code || 'Fail'}` });
       }
     }
   }
