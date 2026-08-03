@@ -44,10 +44,11 @@ export async function GET(request: Request) {
   // 2. Fetch from CNA RSS
   try {
     const cnaFeeds = [
+      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml', // Latest news
       'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416', // Singapore
-      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471', // Asia
+      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471', // Today
       'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311', // World
-      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511' // Business
+      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511' // Asia
     ];
 
     for (const feedUrl of cnaFeeds) {
