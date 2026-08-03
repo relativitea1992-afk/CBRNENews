@@ -144,6 +144,32 @@ export async function generateHourlyReport() {
     } else {
       threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
     }
+
+    // Run headlines through Gemini for quick CBRNE assessment
+    if (newsApiTopHeadline || cnaTopHeadline) {
+      try {
+        const headlines = [newsApiTopHeadline, cnaTopHeadline].filter(Boolean).join('\n');
+        const geminiAnalysis = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: `You are a CBRNE (Chemical, Biological, Radiological, Nuclear, Explosive) threat analyst monitoring Singapore.
+
+Below are the top headlines from news feeds right now. Provide a brief 2-3 sentence assessment:
+1. Is there any CBRNE relevance? (Yes/No + why)
+2. General security posture for Singapore based on these headlines.
+
+Headlines:
+${headlines}
+
+Reply concisely. No markdown, plain text only.`,
+        });
+        const analysis = geminiAnalysis.text?.trim();
+        if (analysis) {
+          threatSection += `\n🤖 <b>Gemini Assessment:</b>\n<i>${analysis}</i>\n`;
+        }
+      } catch {
+        threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>Unavailable</i>\n`;
+      }
+    }
   }
 
   // 8. Construct the Hourly Report Message
