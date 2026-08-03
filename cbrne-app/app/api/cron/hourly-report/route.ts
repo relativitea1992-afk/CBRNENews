@@ -63,40 +63,48 @@ export async function generateHourlyReport() {
   let cnaRssStatus = 'Unknown';
   let cnaTopHeadline = '';
   let cnaTopContent = '';
-  try {
-    const start = Date.now();
-    const res = await fetch('https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml');
-    const latency = Date.now() - start;
-    if (res.ok) {
-      cnaRssStatus = `✅ ONLINE (${latency}ms)`;
-      const xml = await res.text();
-      const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>/);
-      if (titleMatch) {
-        cnaTopHeadline = titleMatch[1];
-      } else {
-        // Fallback: try without CDATA
-        const simpleTitleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>(.*?)<\/title>/);
-        if (simpleTitleMatch) {
-          cnaTopHeadline = simpleTitleMatch[1];
-        }
-      }
-      // Also extract description
-      const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description><!\[CDATA\[(.*?)\]\]><\/description>/);
-      if (descMatch) {
-        cnaTopContent = [cnaTopHeadline, descMatch[1]].filter(Boolean).join('. ');
-      } else {
-        const simpleDescMatch = xml.match(/<item[^>]*>[\s\S]*?<description>(.*?)<\/description>/);
-        if (simpleDescMatch) {
-          cnaTopContent = [cnaTopHeadline, simpleDescMatch[1]].filter(Boolean).join('. ');
+  const cnaFeeds = [
+    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416', // Singapore
+    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471', // Asia
+    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311', // World
+    'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511' // Business
+  ];
+
+  for (const feedUrl of cnaFeeds) {
+    try {
+      const start = Date.now();
+      const res = await fetch(feedUrl);
+      const latency = Date.now() - start;
+      if (res.ok) {
+        cnaRssStatus = `✅ ONLINE (${latency}ms)`;
+        const xml = await res.text();
+        const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>/);
+        if (titleMatch) {
+          cnaTopHeadline = titleMatch[1];
         } else {
-          cnaTopContent = cnaTopHeadline;
+          const simpleTitleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>(.*?)<\/title>/);
+          if (simpleTitleMatch) {
+            cnaTopHeadline = simpleTitleMatch[1];
+          }
         }
+        const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description><!\[CDATA\[(.*?)\]\]><\/description>/);
+        if (descMatch) {
+          cnaTopContent = [cnaTopHeadline, descMatch[1]].filter(Boolean).join('. ');
+        } else {
+          const simpleDescMatch = xml.match(/<item[^>]*>[\s\S]*?<description>(.*?)<\/description>/);
+          if (simpleDescMatch) {
+            cnaTopContent = [cnaTopHeadline, simpleDescMatch[1]].filter(Boolean).join('. ');
+          } else {
+            cnaTopContent = cnaTopHeadline;
+          }
+        }
+        break; // Stop at first successful feed
+      } else {
+        cnaRssStatus = `❌ ERROR (${res.status} ${res.statusText})`;
       }
-    } else {
-      cnaRssStatus = `❌ ERROR (${res.status} ${res.statusText})`;
+    } catch (error: any) {
+      cnaRssStatus = `❌ FAILED (${error.message || 'Unknown'})`;
     }
-  } catch (error: any) {
-    cnaRssStatus = `❌ FAILED (${error.message || 'Unknown'})`;
   }
 
   // 5. Check Supabase Linkage

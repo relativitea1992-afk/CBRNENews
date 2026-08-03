@@ -43,18 +43,30 @@ export async function GET(request: Request) {
 
   // 2. Fetch from CNA RSS
   try {
-    // Note: CNA RSS URL might vary, using a standard one for Singapore news
-    const feed = await parser.parseURL('https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml');
-    feed.items.slice(0, 10).forEach(item => {
-      // CNA feed contains general news, we'll let Gemini filter it
-      articlesToProcess.push({
-        title: item.title || '',
-        content: item.contentSnippet || item.content || '',
-        url: item.link || '',
-        source: 'CNA',
-        publishedAt: new Date(item.pubDate || Date.now())
-      });
-    });
+    const cnaFeeds = [
+      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416', // Singapore
+      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471', // Asia
+      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311', // World
+      'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511' // Business
+    ];
+
+    for (const feedUrl of cnaFeeds) {
+      try {
+        const feed = await parser.parseURL(feedUrl);
+        // Take top 5 from each category to avoid overloading
+        feed.items.slice(0, 5).forEach(item => {
+          articlesToProcess.push({
+            title: item.title || '',
+            content: item.contentSnippet || item.content || '',
+            url: item.link || '',
+            source: 'CNA',
+            publishedAt: new Date(item.pubDate || Date.now())
+          });
+        });
+      } catch (e) {
+        console.error('Error fetching CNA feed:', feedUrl, e);
+      }
+    }
   } catch (err) {
     console.error('Error fetching CNA RSS:', err);
   }
