@@ -182,7 +182,7 @@ export async function generateHourlyReport() {
 Below are the top extracted news articles from live feeds. Analyze the full content and provide a detailed threat assessment and advisory:
 1. Detailed Assessment: Is there any CBRNE relevance? (Yes/No + brief reasoning).
 2. General Security Posture: Provide a thorough analysis of the general security posture for Singapore based on this news. If there is no threat or elevation of the current security posture, keep this extremely brief (e.g., "Normal" or "No change").
-3. Advisory: Provide an actionable advisory based strictly on your assessment. If there is a potential threat, clearly outline steps for residents (Indoors/Outdoors/Medical). If there is no threat, do not provide an advisory.
+3. Advisory: Provide an actionable advisory based strictly on your assessment. If there is a potential threat, clearly outline steps for residents (Indoors/Outdoors/Medical). If there is no threat, state "None".
 
 News Content:
 ${newsContent}
