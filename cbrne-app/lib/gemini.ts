@@ -18,6 +18,26 @@ export async function triageNewsArticle(articleText: string): Promise<TriageResu
     return null;
   }
 
+  let windContext = '';
+  try {
+    const [speedRes, dirRes] = await Promise.all([
+      fetch('https://api-open.data.gov.sg/v2/real-time/api/wind-speed'),
+      fetch('https://api-open.data.gov.sg/v2/real-time/api/wind-direction')
+    ]);
+    const speedData = await speedRes.json();
+    const dirData = await dirRes.json();
+    
+    // Pick the first few stations to give a general sense of the wind
+    const stations = speedData.data.readings.slice(0, 5).map((speedReading: any) => {
+      const dirReading = dirData.data.readings.find((d: any) => d.stationId === speedReading.stationId);
+      return `Station ${speedReading.stationId}: Speed ${speedReading.value} knots, Direction ${dirReading ? dirReading.value : 'unknown'} degrees`;
+    }).join('\n');
+    
+    windContext = `\n\nCURRENT WIND DATA (from api-open.data.gov.sg):\nTimestamp: ${speedData.data.timestamp}\n${stations}\n\nPlease use this wind data to model and project the output for (1) the next 30 mins and (2) next 1 hour, where the threat would likely spread to, providing the actual impacted area via township in Singapore.`;
+  } catch (e) {
+    console.error('Failed to fetch wind data:', e);
+  }
+
   const prompt = `
 You are a CBRNE (Chemical, Biological, Radiological, Nuclear, and Explosives) threat analyst for Singapore.
 Analyze the following news text and determine if it represents a threat (including odour incidents, toxic smells, leaks, potential releases) that could impact mainland Singapore.
@@ -27,7 +47,12 @@ Return the result strictly as a JSON object with the following fields:
 - "isRelevant" (boolean): true if it represents a relevant CBRNE/Odour threat to Singapore, false otherwise.
 - "headline" (string): A concise, punchy headline for the alert.
 - "summary" (string): A detailed, comprehensive threat assessment of the incident. Explain the exact nature of the threat, its severity, and provide a thorough analysis of its potential impact on Singapore. Include specific time details, environmental factors (like wind/weather), and estimation of arrival times for any threats/plumes if the information is available in the text.
-- "advisory" (string): Provide a highly detailed, actionable advisory based strictly on the threat assessment you just formulated. Highlight potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details. Analyze the exact risk (e.g., toxicity, flammability, radiation). Clearly state what residents should do if they are INDOORS (e.g., close windows, turn off AC) and what they should do if they are OUTDOORS (e.g., seek shelter, avoid the area). Furthermore, include specific CBRNE medical advice (e.g., decontamination steps like washing with soap and water, symptoms to watch out for, when to seek emergency medical attention, or specific first-aid measures depending on the exact agent). Use the exact string [BREAK] to separate these points into clear paragraphs (e.g. Risk, Indoors, Outdoors, Medical Advice). Do not use actual line breaks or newline characters in the JSON string.
+- "advisory" (string): Provide a highly detailed, actionable advisory based strictly on the threat assessment you just formulated. 
+  - State the physical location of the identified source.
+  - Identify the substance of the CBRNE threat and its physical properties.
+  - Using the provided wind data, model and project an output for (1) the next 30 mins and (2) next 1 hour, where would the threat likely spread to providing the actual impacted area via township.
+  - Highlight potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details. Analyze the exact risk (e.g., toxicity, flammability, radiation). Clearly state what residents should do if they are INDOORS (e.g., close windows, turn off AC) and what they should do if they are OUTDOORS (e.g., seek shelter, avoid the area). Furthermore, include specific CBRNE medical advice (e.g., decontamination steps like washing with soap and water, symptoms to watch out for, when to seek emergency medical attention, or specific first-aid measures depending on the exact agent). 
+  - Use the exact string [BREAK] to separate these points into clear paragraphs (e.g. Source Location & Substance, Plume Projection, Risk, Indoors, Outdoors, Medical Advice). Do not use actual line breaks or newline characters in the JSON string.
 - "lat" (number or null): Latitude of the incident location. Null if unknown.
 - "lng" (number or null): Longitude of the incident location. Null if unknown.
 - "type" (string): Classify as "Chemical", "Biological", "Radiological", "Nuclear", "Explosive", "Odour", or "Unknown".
@@ -35,7 +60,7 @@ Return the result strictly as a JSON object with the following fields:
 News text:
 """
 ${articleText}
-"""
+"""${windContext}
 `;
 
   try {
