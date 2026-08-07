@@ -303,7 +303,7 @@ export async function generateHourlyReport() {
     };
 
     const windSpeedMsg = formatMsg('Wind Speed', speedStats, 'weather stations');
-    const windDirMsg = formatMsg('Wind Dir', dirStats, 'weather stations');
+    const windDirMsg = formatMsg('Wind Direction', dirStats, 'weather stations');
     const pm25Msg = formatMsg('PM2.5', pmStats, 'regions');
 
     govSgStatus = `✅ ONLINE (${latency}ms)\n  • ${windSpeedMsg}\n  • ${windDirMsg}\n  • ${pm25Msg}`;
