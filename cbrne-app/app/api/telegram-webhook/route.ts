@@ -112,6 +112,11 @@ export async function POST(request: NextRequest) {
         try {
           const oneDayAgo = DateTime.now().minus({ days: 1 }).toJSDate();
           
+          // Housekeeping: delete logs older than 24 hours
+          await prisma.systemLog.deleteMany({
+            where: { createdAt: { lt: oneDayAgo } }
+          });
+          
           const logs = await prisma.systemLog.findMany({
             where: { createdAt: { gte: oneDayAgo } },
             orderBy: { createdAt: 'desc' }
