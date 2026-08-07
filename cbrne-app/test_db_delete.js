@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function main() { const del = await prisma.systemLog.deleteMany({ where: { details: { contains: 'Verified: Total 11 new articles (NewsAPI: 4, CNA: 7)' } } }); console.log('Deleted mock log:', del.count); } main().catch(console.error).finally(() => prisma.$disconnect());

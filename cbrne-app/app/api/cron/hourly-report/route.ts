@@ -4,18 +4,45 @@ import { sendTelegramMessage } from '@/lib/telegram';
 import { geminiGenerate, checkAllModels } from '@/lib/gemini-client';
 
 export const maxDuration = 60; // 1 minute max duration
+export const preferredRegion = 'sin1';
 
 export async function generateHourlyReport() {
-  // 1. Fetch the latest News Monitoring API check
-  const lastRun = await prisma.systemLog.findFirst({
-    where: { jobName: 'fetch-news' },
-    orderBy: { createdAt: 'desc' }
+  // 1. Fetch the News Monitoring API checks from the past 1 hour (up to 2 runs)
+  const oneHourAgoLog = new Date(Date.now() - 60 * 60 * 1000);
+  const recentRuns = await prisma.systemLog.findMany({
+    where: { 
+      jobName: 'fetch-news',
+      createdAt: { gte: oneHourAgoLog }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 2
   });
 
-  let newsStatusMsg = '⚠️ <i>Background `fetch-news` cron job has not run yet.</i>';
-  if (lastRun) {
-    const outcome = lastRun.details || lastRun.status;
-    newsStatusMsg = `✅ <b>Last Checked:</b> ${lastRun.createdAt.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}\n<b>Outcome:</b> ${outcome}`;
+  let newsStatusMsg = '⚠️ <i>Background `fetch-news` cron job has not run in the past hour.</i>';
+  
+  const escapeHtml = (unsafe: string) => {
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;");
+  };
+
+  if (recentRuns.length > 0) {
+    let checkedLines = '';
+    for (let i = 0; i < recentRuns.length; i++) {
+      const run = recentRuns[i];
+      let outcome = run.details || run.status;
+      // Escape raw text first
+      outcome = escapeHtml(outcome);
+      outcome = outcome.replace(/ via /g, '\nProcessed via ')
+                       .replace(/ \| Tokens Consumed:/g, '\nTokens Consumed:')
+                       .replace(/\. Found/g, '.\nFound')
+                       .replace(/\. No relevant threats/g, '.\nNo relevant threats')
+                       .replace(/\. Threats detected!/g, '.\nThreats detected!');
+      const icon = run.status === 'SUCCESS' ? '✅' : '❌';
+      checkedLines += `${icon} <b>News Fetched:</b> ${run.createdAt.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}\n<b>Outcome:</b> ${outcome}\n\n`;
+    }
+    newsStatusMsg = checkedLines.trim();
   }
 
   // 2. Check ALL Gemini models individually
@@ -77,7 +104,7 @@ export async function generateHourlyReport() {
   let cnaSuccessCount = 0;
   let totalCnaLatency = 0;
 
-  for (const feed of cnaFeeds) {
+  await Promise.all(cnaFeeds.map(async (feed) => {
     try {
       const start = Date.now();
       const res = await fetch(feed.url);
@@ -106,12 +133,64 @@ export async function generateHourlyReport() {
     } catch (error: any) {
       // Ignore individual feed errors, we will report overall status
     }
-  }
+  }));
 
   if (cnaSuccessCount > 0) {
     cnaRssStatus = `✅ ONLINE (${Math.round(totalCnaLatency / cnaSuccessCount)}ms avg, ${cnaSuccessCount}/${cnaFeeds.length} feeds)`;
   } else {
     cnaRssStatus = `❌ FAILED (All feeds failed)`;
+  }
+
+  // 4b. Check Straits Times RSS Linkage + extract top headline and description
+  let stRssStatus = 'Unknown';
+  let stTopContent = '';
+  const stHeadlines = new Set<string>();
+  const uniqueStHeadlinesWithSource: { source: string, headline: string }[] = [];
+
+  const stFeeds = [
+    { name: 'Singapore', url: 'https://www.straitstimes.com/news/singapore/rss.xml' },
+    { name: 'World', url: 'https://www.straitstimes.com/news/world/rss.xml' },
+    { name: 'Asia', url: 'https://www.straitstimes.com/news/asia/rss.xml' }
+  ];
+
+  let stSuccessCount = 0;
+  let totalStLatency = 0;
+
+  await Promise.all(stFeeds.map(async (feed) => {
+    try {
+      const start = Date.now();
+      const res = await fetch(feed.url);
+      const latency = Date.now() - start;
+      if (res.ok) {
+        stSuccessCount++;
+        totalStLatency += latency;
+        const xml = await res.text();
+        const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
+        if (titleMatch) {
+          const title = titleMatch[1].replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
+          if (!stHeadlines.has(title)) {
+            stHeadlines.add(title);
+            uniqueStHeadlinesWithSource.push({ source: feed.name, headline: title });
+
+            const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description>([\s\S]*?)<\/description>/i);
+            if (descMatch) {
+              const descClean = descMatch[1].replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
+              stTopContent += `[ST ${feed.name}] ${title}. ${descClean}\n\n`;
+            } else {
+              stTopContent += `[ST ${feed.name}] ${title}\n\n`;
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      // Ignore individual feed errors, we will report overall status
+    }
+  }));
+
+  if (stSuccessCount > 0) {
+    stRssStatus = `✅ ONLINE (${Math.round(totalStLatency / stSuccessCount)}ms avg, ${stSuccessCount}/${stFeeds.length} feeds)`;
+  } else {
+    stRssStatus = `❌ FAILED (All feeds failed)`;
   }
 
   // 5. Check Supabase Linkage
@@ -131,11 +210,11 @@ export async function generateHourlyReport() {
   const vercelRegion = process.env.VERCEL_REGION || 'Local/Unknown';
   const computeStatus = `✅ Region: ${vercelRegion} | RAM: ${memoryMB}MB`;
 
-  // 7. Check for relevant incidents in the past hour
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  // 7. Check for relevant incidents in the past 24 hours
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const recentThreats = await prisma.incident.findMany({
     where: {
-      createdAt: { gte: oneHourAgo },
+      createdAt: { gte: twentyFourHoursAgo },
       isRelevant: true,
     },
     orderBy: { createdAt: 'desc' },
@@ -143,7 +222,7 @@ export async function generateHourlyReport() {
 
   let threatSection = '';
   if (recentThreats.length > 0) {
-    threatSection = `\n<b>🚨 Threats Detected (Past 1hr):</b> ${recentThreats.length}\n`;
+    threatSection = `\n<b>🚨 Threats Detected (Past 24hr):</b> ${recentThreats.length}\n`;
     for (const t of recentThreats.slice(0, 3)) {
       threatSection += `• <b>[${t.type}]</b> ${t.headline}\n`;
     }
@@ -151,51 +230,136 @@ export async function generateHourlyReport() {
       threatSection += `<i>...and ${recentThreats.length - 3} more</i>\n`;
     }
   } else {
-    threatSection = `\n💚 <b>No CBRNE threats detected (Past 1hr)</b>\n`;
+    threatSection = `\n💚 <b>No CBRNE threats detected (Past 24hr)</b>\n`;
   }
 
-  // Heartbeat: show top news from each source as proof of life
-  threatSection += `\n<b>💓 Heartbeat — Top News Pulse:</b>\n`;
+  // Run extracted news through Gemini for CBRNE assessment & top headline selection
+  let heartbeatSection = `\n<b>💓 Heartbeat — Top News Pulse:</b>\n`;
   if (newsApiTopHeadline) {
-    threatSection += `📰 <b>NewsAPI:</b> ${newsApiTopHeadline}\n`;
+    heartbeatSection += `📰 <b>NewsAPI:</b> ${newsApiTopHeadline}\n`;
   } else {
-    threatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
-  }
-  if (uniqueHeadlinesWithSource.length > 0) {
-    for (const item of uniqueHeadlinesWithSource) {
-      threatSection += `📡 <b>CNA RSS (${item.source}):</b> ${item.headline}\n`;
-    }
-  } else {
-    threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
+    heartbeatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
   }
 
-  // Run extracted news through Gemini for CBRNE assessment (with model fallback)
-  if (newsApiTopContent || cnaTopContent) {
+  let cnaPulse = '';
+  let stPulse = '';
+  let geminiAssessmentHtml = '';
+
+  if (newsApiTopContent || cnaTopContent || stTopContent) {
     try {
       const newsContent = [
         newsApiTopContent ? `[NewsAPI Article]\n${newsApiTopContent}` : '',
         cnaTopContent ? `[CNA Articles]\n${cnaTopContent.trim()}` : '',
+        stTopContent ? `[Straits Times Articles]\n${stTopContent.trim()}` : '',
       ].filter(Boolean).join('\n\n');
-      const geminiAnalysis = await geminiGenerate({
-        contents: `You are a CBRNE (Chemical, Biological, Radiological, Nuclear, Explosive) threat analyst monitoring Singapore.
+      
+      // Parallelize the Gemini operations to stay within Vercel timeout constraints while keeping them separate
+      const [geminiSelection, geminiAssessmentResponse] = await Promise.all([
+        geminiGenerate({
+          contents: `You are a CBRNE threat analyst monitoring Singapore.
+Below are the top extracted news articles from live feeds.
+Task: Review the [CNA Articles] and [Straits Times Articles]. Select the 2 most CBRNE-relevant headlines for CNA and the 2 most relevant for Straits Times. If there's no obvious CBRNE relevance, just select the top 2 major news.
 
-Below are the top extracted news articles from live feeds. Analyze the full content and provide a detailed threat assessment and advisory:
-1. Detailed Assessment: Is there any CBRNE relevance? (Yes/No + brief reasoning).
-2. General Security Posture: Provide a thorough analysis of the general security posture for Singapore based on this news. If there is no threat or elevation of the current security posture, keep this extremely brief (e.g., "Normal" or "No change").
-3. Advisory: Provide an actionable advisory based strictly on your assessment. If there is a potential threat, clearly outline steps for residents (Indoors/Outdoors/Medical). If there is no threat, state "None".
+Output ONLY a valid raw JSON object (without markdown blocks) in the following structure:
+{
+  "cnaTop2": [{"source": "Source Category", "headline": "Headline string"}],
+  "stTop2": [{"source": "Source Category", "headline": "Headline string"}]
+}
 
 News Content:
-${newsContent}
+${newsContent}`,
+          config: { responseMimeType: "application/json" }
+        }),
+        geminiGenerate({
+          contents: `You are a CBRNE threat analyst monitoring Singapore.
+Below are the top extracted news articles from live feeds.
+Task 1: Provide a detailed threat assessment based on all articles (Yes/No CBRNE relevance + brief reasoning).
+Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
+Task 3: Provide an actionable advisory based strictly on the assessment (or "None").
 
-Reply concisely but comprehensively. When using common widely known acronyms, use ONLY the acronym and completely omit the full long words to shorten the output. You may use standard Telegram HTML tags like <b> for bolding. Do NOT use markdown (**).`,
-      });
-      const analysis = geminiAnalysis.text?.trim();
-      if (analysis) {
-        threatSection += `\n🤖 <b>Gemini Assessment (${geminiAnalysis.modelUsed}):</b>\n<i>${analysis}</i>\n`;
+Output ONLY a valid raw JSON object (without markdown blocks) in the following structure:
+{
+  "assessment": "Detailed assessment html...",
+  "generalPosture": "Security posture html...",
+  "advisory": "Advisory html..."
+}
+
+Note: In the HTML fields, you may use standard Telegram HTML tags like <b> for bolding. Do NOT use markdown (**). When using common widely known acronyms, use ONLY the acronym.
+
+News Content:
+${newsContent}`,
+          config: { responseMimeType: "application/json" }
+        })
+      ]);
+
+      const selectionRaw = geminiSelection.text?.trim() || '{}';
+      const selectionMatch = selectionRaw.match(/\{[\s\S]*\}/);
+      const cleanSelectionJson = selectionMatch ? selectionMatch[0] : '{}';
+      const selectionResult = JSON.parse(cleanSelectionJson);
+
+      const assessmentRaw = geminiAssessmentResponse.text?.trim() || '{}';
+      const assessmentMatch = assessmentRaw.match(/\{[\s\S]*\}/);
+      const cleanAssessmentJson = assessmentMatch ? assessmentMatch[0] : '{}';
+      const assessmentResult = JSON.parse(cleanAssessmentJson);
+
+      if (selectionResult.cnaTop2 && selectionResult.cnaTop2.length > 0) {
+        selectionResult.cnaTop2.forEach((item: any) => {
+          cnaPulse += `📡 <b>CNA RSS (${item.source}):</b> ${item.headline}\n`;
+        });
       }
-    } catch {
-      threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>All models unavailable</i>\n`;
+      if (selectionResult.stTop2 && selectionResult.stTop2.length > 0) {
+        selectionResult.stTop2.forEach((item: any) => {
+          stPulse += `🗞️ <b>ST RSS (${item.source}):</b> ${item.headline}\n`;
+        });
+      }
+
+      const sanitizeTgHtml = (str: string) => {
+        if (!str) return '';
+        return String(str)
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n')
+          .replace(/<p>/gi, '')
+          .replace(/<([^>]+)>/g, (match, tag) => {
+             // allow only supported tags in Telegram HTML
+             const lower = tag.toLowerCase().split(' ')[0];
+             if (['b', '/b', 'i', '/i', 'u', '/u', 's', '/s', 'a', '/a', 'code', '/code', 'pre', '/pre'].includes(lower)) {
+               return match;
+             }
+             return ''; // strip all other tags
+          });
+      };
+
+      geminiAssessmentHtml = `
+1. <b>Detailed Assessment:</b> ${sanitizeTgHtml(assessmentResult.assessment)}
+2. <b>General Security Posture:</b> ${sanitizeTgHtml(assessmentResult.generalPosture)}
+3. <b>Advisory:</b> ${sanitizeTgHtml(assessmentResult.advisory)}`;
+
+      const selectionTokenStr = geminiSelection.usageMetadata?.totalTokenCount 
+        ? ` (${geminiSelection.modelUsed}, Tokens: ${geminiSelection.usageMetadata.totalTokenCount} [In: ${geminiSelection.usageMetadata.promptTokenCount}, Out: ${geminiSelection.usageMetadata.candidatesTokenCount}])`
+        : ` (${geminiSelection.modelUsed})`;
+
+      const assessmentTokenStr = geminiAssessmentResponse.usageMetadata?.totalTokenCount 
+        ? ` (${geminiAssessmentResponse.modelUsed}, Tokens: ${geminiAssessmentResponse.usageMetadata.totalTokenCount} [In: ${geminiAssessmentResponse.usageMetadata.promptTokenCount}, Out: ${geminiAssessmentResponse.usageMetadata.candidatesTokenCount}])`
+        : ` (${geminiAssessmentResponse.modelUsed})`;
+
+      threatSection += heartbeatSection.replace('Top News Pulse:', `Top News Pulse${selectionTokenStr}:`);
+      threatSection += cnaPulse || `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
+      threatSection += stPulse || `🗞️ <b>ST RSS:</b> <i>No headlines available</i>\n`;
+      threatSection += `\n🤖 <b>Gemini Assessment${assessmentTokenStr}:</b>\n<i>${geminiAssessmentHtml.trim()}</i>\n`;
+      
+    } catch (e: any) {
+      console.error('Gemini parsing error:', e);
+      // Fallback if parsing fails or all models unavailable
+      threatSection += heartbeatSection;
+      threatSection += `📡 <b>CNA RSS:</b> <i>Error parsing top headlines</i>\n`;
+      threatSection += `🗞️ <b>ST RSS:</b> <i>Error parsing top headlines</i>\n`;
+      threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>Unavailable or Error (${e.message})</i>\n`;
     }
+  } else {
+    // No content at all
+    threatSection += heartbeatSection;
+    threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
+    threatSection += `🗞️ <b>ST RSS:</b> <i>No headlines available</i>\n`;
   }
 
   // 8. Construct the Hourly Report Message
@@ -208,6 +372,7 @@ ${threatSection}
 <b>Gemini AI Engine:</b>
 ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 <b>CNA RSS Link:</b> ${cnaRssStatus}
+<b>ST RSS Link:</b> ${stRssStatus}
 <b>Supabase Link:</b> ${supabaseStatus}
 
 <b>Vercel Compute</b>
@@ -216,10 +381,15 @@ ${computeStatus}
 <i>Report generated automatically.</i>`;
 
   // 6. Send to Telegram
+  console.log("=== REPORT MSG ===");
+  console.log(reportMsg);
+  console.log("==================");
   if (process.env.TELEGRAM_CHAT_ID) {
     await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID, reportMsg);
   }
 }
+
+import { after } from 'next/server';
 
 export async function GET(request: Request) {
   // 1. Verify Cron Secret
@@ -232,10 +402,37 @@ export async function GET(request: Request) {
   }
 
   try {
-    await generateHourlyReport();
-    return NextResponse.json({ success: true, message: 'Hourly report sent' });
+    // Return immediately to prevent cron-job.org from timing out at 30 seconds,
+    // and run the heavy report generation safely in the background on Vercel
+    after(async () => {
+      try {
+        await generateHourlyReport();
+        await prisma.systemLog.create({
+          data: {
+            jobName: 'hourly-report',
+            status: 'SUCCESS',
+            details: 'Hourly report successfully generated and sent to Telegram.'
+          }
+        });
+      } catch (e: any) {
+        console.error('Background hourly report failed:', e);
+        try {
+          await prisma.systemLog.create({
+            data: {
+              jobName: 'hourly-report',
+              status: 'ERROR',
+              details: e.message || 'Unknown error'
+            }
+          });
+        } catch (logErr) {
+          console.error('Failed to write hourly report error to log:', logErr);
+        }
+      }
+    });
+    
+    return NextResponse.json({ success: true, message: 'Hourly report processing in background' });
   } catch (error: any) {
-    console.error('Failed to generate hourly report:', error);
+    console.error('Failed to init hourly report:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

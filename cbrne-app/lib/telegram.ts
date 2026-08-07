@@ -83,9 +83,12 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
     });
     
     if (!response.ok) {
-      console.error('Failed to send Telegram message:', await response.text());
+      const errorText = await response.text();
+      console.error('Failed to send Telegram message:', errorText);
+      throw new Error(`Telegram API Error: ${errorText}`);
     }
   } catch (error) {
     console.error('Error sending Telegram message:', error);
+    throw error;
   }
 }

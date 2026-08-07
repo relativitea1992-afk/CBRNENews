@@ -9,6 +9,7 @@ export interface TriageResult {
   type: string;
   advisory?: string;
   modelUsed?: string;
+  usageMetadata?: any;
 }
 
 export async function triageNewsArticle(articleText: string): Promise<TriageResult | null> {
@@ -60,6 +61,7 @@ ${articleText}
           result.advisory = result.advisory.replace(/\[BREAK\]/g, '\n\n');
         }
         result.modelUsed = response.modelUsed;
+        result.usageMetadata = response.usageMetadata;
         return result;
       } catch (parseError) {
         console.error('Failed to parse Gemini JSON:', cleanText);

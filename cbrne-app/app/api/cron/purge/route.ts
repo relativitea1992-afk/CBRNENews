@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { DateTime } from 'luxon';
 
+export const preferredRegion = 'sin1';
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
   const url = new URL(request.url);
@@ -12,13 +14,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Purge records older than 3 days
-    const threeDaysAgo = DateTime.now().minus({ days: 3 }).toJSDate();
+    // Purge records older than 1 year
+    const oneYearAgo = DateTime.now().minus({ years: 1 }).toJSDate();
     
     const result = await prisma.incident.deleteMany({
       where: {
         createdAt: {
-          lt: threeDaysAgo,
+          lt: oneYearAgo,
         },
       },
     });

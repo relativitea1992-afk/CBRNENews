@@ -33,6 +33,7 @@ function MapFix() {
 
 export default function Map({ incidents }: { incidents: Incident[] }) {
   const [mounted, setMounted] = useState(false);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
   const searchParams = useSearchParams();
   const isSnapshot = searchParams.get('snapshot') === 'true';
 
@@ -66,14 +67,23 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
       })
       .join('~');
     
-    const ptQuery = ptParam ? `?pt=${ptParam}` : '';
-    // Use our internal API route to proxy the image fetch to bypass Microlink's IP being blocked by Yandex
-    const staticMapUrl = `/api/proxy-map${ptQuery}`;
+    const ptQuery = ptParam ? `&pt=${ptParam}` : '';
+    const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=11&l=map&lang=en_US&size=650,450${ptQuery}`;
     
     return (
       <div className="absolute inset-0 z-0 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={staticMapUrl} alt="Static Map" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img 
+           src={staticMapUrl} 
+           alt="Static Map" 
+           style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+           onLoad={() => setIsImageLoaded(true)} 
+           onError={(e) => {
+             console.error('Static map failed to load', e);
+             setIsImageLoaded(true); // Fallback so we don't timeout forever
+           }} 
+        />
+        {isImageLoaded && <div id="map-ready" className="hidden"></div>}
       </div>
     );
   }

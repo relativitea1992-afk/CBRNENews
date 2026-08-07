@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import Parser from 'rss-parser';
 import prisma from '@/lib/prisma';
 import { triageNewsArticle } from '@/lib/gemini';
 import { sendTelegramMessage } from '@/lib/telegram';
 
 const parser = new Parser();
+
+function escapeHtml(unsafe: string) {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 export const maxDuration = 300; // Allow up to 5 minutes for AI processing
 
@@ -80,81 +90,100 @@ export async function GET(request: Request) {
   const sourceCounts: Record<string, number> = {};
   const modelsUsed = new Set<string>();
 
-  for (const article of articlesToProcess) {
-    if (!article.url || !article.title) continue;
+  after(async () => {
+    let totalPromptTokens = 0;
+    let totalCandidatesTokens = 0;
 
-    // Check if already processed to save Gemini calls
-    const existing = await prisma.incident.findUnique({ where: { sourceUrl: article.url } });
-    if (existing) continue;
+    for (const article of articlesToProcess) {
+      if (!article.url || !article.title) continue;
 
-    const triage = await triageNewsArticle(`Title: ${article.title}\n\nContent: ${article.content}`);
-    processedCount++;
-    sourceCounts[article.source] = (sourceCounts[article.source] || 0) + 1;
-    if (triage && triage.modelUsed) {
-      modelsUsed.add(triage.modelUsed);
-    }
+      // Check if already processed to save Gemini calls
+      const existing = await prisma.incident.findUnique({ where: { sourceUrl: article.url } });
+      if (existing) continue;
 
-    if (triage && triage.isRelevant) {
-      threatCount++;
-      
-      // Save to DB
-      await prisma.incident.create({
-        data: {
-          headline: triage.headline,
-          summary: triage.summary,
-          sourceUrl: article.url,
-          sourceName: article.source,
-          publishedAt: article.publishedAt,
-          lat: triage.lat,
-          lng: triage.lng,
-          type: triage.type,
-          advisory: triage.advisory,
-          modelUsed: triage.modelUsed || 'Unknown',
-          isRelevant: true,
-        }
-      });
+      const triage = await triageNewsArticle(`Title: ${article.title}\n\nContent: ${article.content}`);
+      processedCount++;
+      sourceCounts[article.source] = (sourceCounts[article.source] || 0) + 1;
+      if (triage && triage.modelUsed) {
+        modelsUsed.add(triage.modelUsed);
+      }
+      if (triage && triage.usageMetadata) {
+        totalPromptTokens += triage.usageMetadata.promptTokenCount || 0;
+        totalCandidatesTokens += triage.usageMetadata.candidatesTokenCount || 0;
+      }
 
-      // Send Telegram Alert
-      const alertMsg = `🚨 <b>NEW THREAT DETECTED</b> 🚨
-      
-<b>Headline:</b> ${triage.headline}
-<b>Type:</b> ${triage.type}
-<b>Source:</b> ${article.source}
+      if (triage && triage.isRelevant) {
+        threatCount++;
+        
+        // Save to DB
+        await prisma.incident.create({
+          data: {
+            headline: triage.headline,
+            summary: triage.summary,
+            sourceUrl: article.url,
+            sourceName: article.source,
+            publishedAt: article.publishedAt,
+            lat: triage.lat,
+            lng: triage.lng,
+            type: triage.type,
+            advisory: triage.advisory,
+            modelUsed: triage.modelUsed || 'Unknown',
+            isRelevant: true,
+          }
+        });
+
+        // Send Telegram Alert
+        const alertMsg = `🚨 <b>NEW THREAT DETECTED</b> 🚨
+        
+<b>Headline:</b> ${escapeHtml(triage.headline)}
+<b>Type:</b> ${escapeHtml(triage.type)}
+<b>Source:</b> ${escapeHtml(article.source)}
 
 <b>Threat Assessment:</b>
-${triage.summary}
+${escapeHtml(triage.summary)}
 
-${triage.advisory ? `<b>Advisory:</b>\n${triage.advisory}\n\n` : ''}<b>Model Used:</b> ${triage.modelUsed || 'Unknown'}
-<b>Link:</b> ${article.url}`;
+${triage.advisory ? `<b>Advisory:</b>\n${escapeHtml(triage.advisory)}\n\n` : ''}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}
+<b>Link:</b> ${escapeHtml(article.url)}`;
 
-      await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
-    } else if (triage && !triage.isRelevant) {
-       // Save as irrelevant to avoid reprocessing
-       await prisma.incident.create({
-        data: {
-          headline: article.title.substring(0, 200),
-          summary: "Irrelevant",
-          sourceUrl: article.url,
-          sourceName: article.source,
-          publishedAt: article.publishedAt,
-          isRelevant: false,
-        }
-      });
+        await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
+      } else if (triage && !triage.isRelevant) {
+         // Save as irrelevant to avoid reprocessing
+         await prisma.incident.create({
+          data: {
+            headline: article.title.substring(0, 200),
+            summary: "Irrelevant",
+            sourceUrl: article.url,
+            sourceName: article.source,
+            publishedAt: article.publishedAt,
+            isRelevant: false,
+          }
+        });
+      }
     }
-  }
 
-  const sourceBreakdown = Object.entries(sourceCounts).map(([src, count]) => `${src}: ${count}`).join(', ');
-  const breakdownStr = sourceBreakdown ? ` (${sourceBreakdown})` : '';
-  const modelsStr = modelsUsed.size > 0 ? ` using [${Array.from(modelsUsed).join(', ')}]` : '';
+    const sourceBreakdown = Object.entries(sourceCounts).map(([src, count]) => `${src}: ${count}`).join(', ');
+    const breakdownStr = sourceBreakdown ? `${sourceBreakdown}` : 'No new articles';
+    
+    let providerName = 'AI';
+    const modelArray = Array.from(modelsUsed);
+    if (modelArray.some(m => m.includes('gemini'))) providerName = 'Gemini';
+    if (modelArray.some(m => m.includes('gemma'))) providerName = 'Gemma';
+    if (modelArray.some(m => m.includes('gemini')) && modelArray.some(m => m.includes('gemma'))) providerName = 'Gemini & Gemma';
+    
+    const modelsStr = modelsUsed.size > 0 ? ` via ${providerName} [${modelArray.join(', ')}]` : '';
+    const tokenStr = (totalPromptTokens > 0 || totalCandidatesTokens > 0) 
+      ? ` | Tokens Consumed: ${totalPromptTokens + totalCandidatesTokens} [In: ${totalPromptTokens}, Out: ${totalCandidatesTokens}]` 
+      : '';
 
-  // Log the execution to SystemLog
-  await prisma.systemLog.create({
-    data: {
-      jobName: 'fetch-news',
-      status: 'SUCCESS',
-      details: `Verified ${processedCount} new articles via Gemini${modelsStr}${breakdownStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
-    }
+    // Log the execution to SystemLog
+    await prisma.systemLog.create({
+      data: {
+        jobName: 'fetch-news',
+        status: 'SUCCESS',
+        details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
+      }
+    });
   });
 
-  return NextResponse.json({ success: true, processedCount, threatCount });
+  return NextResponse.json({ success: true, message: 'Processing in background' });
 }

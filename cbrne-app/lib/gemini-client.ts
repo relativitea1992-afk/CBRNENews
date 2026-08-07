@@ -10,6 +10,8 @@ const MODEL_FALLBACK_CHAIN = [
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemma-4-31b-it',
 ];
 
 export interface GeminiRequestOptions {
@@ -20,6 +22,7 @@ export interface GeminiRequestOptions {
 export interface GeminiResponse {
   text: string | undefined;
   modelUsed: string;
+  usageMetadata?: any;
 }
 
 /**
@@ -36,23 +39,19 @@ export async function geminiGenerate(options: GeminiRequestOptions): Promise<Gem
         contents: options.contents,
         ...(options.config ? { config: options.config } : {}),
       });
-      return { text: response.text, modelUsed: model };
+      return { text: response.text, modelUsed: model, usageMetadata: response.usageMetadata };
     } catch (error: any) {
       lastError = error;
       const status = error?.status || error?.httpStatusCode;
       const message = error?.message || '';
 
-      // Retry on rate limit (429), server errors (5xx), or model not found (404)
-      if (status === 429 || status === 503 || status === 404 ||
-          (status && status >= 500) ||
-          message.includes('rate') || message.includes('quota') ||
-          message.includes('not found') || message.includes('unavailable')) {
-        console.warn(`Gemini model "${model}" failed (${status || message}), trying next model...`);
-        continue;
+      // Retry on anything EXCEPT 400 (Bad Request), 401 (Unauthorized), 403 (Forbidden)
+      if (status === 400 || status === 401 || status === 403) {
+        throw error;
       }
 
-      // For other errors (e.g. bad request, auth), don't retry with another model
-      throw error;
+      console.warn(`Gemini model "${model}" failed (${status || 'Network/Unknown'} - ${message}), trying next model...`);
+      continue;
     }
   }
 
@@ -72,9 +71,7 @@ export interface ModelStatus {
  * per-model status. Used for the hourly system report.
  */
 export async function checkAllModels(): Promise<ModelStatus[]> {
-  const results: ModelStatus[] = [];
-
-  for (const model of MODEL_FALLBACK_CHAIN) {
+  const promises = MODEL_FALLBACK_CHAIN.map(async (model) => {
     try {
       const start = Date.now();
       const response = await ai.models.generateContent({
@@ -83,24 +80,20 @@ export async function checkAllModels(): Promise<ModelStatus[]> {
       });
       const latencyMs = Date.now() - start;
 
-      if (response.text?.includes('OK')) {
-        results.push({ model, status: 'online', latencyMs });
-      } else {
-        results.push({ model, status: 'online', latencyMs });
-      }
+      return { model, status: 'online' as const, latencyMs };
     } catch (error: any) {
       const code = error?.status || error?.httpStatusCode;
       if (code === 429) {
-        results.push({ model, status: 'rate_limited' });
+        return { model, status: 'rate_limited' as const };
       } else if (code === 404) {
-        results.push({ model, status: 'error', error: 'Not found' });
+        return { model, status: 'error' as const, error: 'Not found' };
       } else {
-        results.push({ model, status: 'error', error: `${code || 'Fail'}` });
+        return { model, status: 'error' as const, error: `${code || 'Fail'}` };
       }
     }
-  }
+  });
 
-  return results;
+  return Promise.all(promises);
 }
 
 export { ai, MODEL_FALLBACK_CHAIN };

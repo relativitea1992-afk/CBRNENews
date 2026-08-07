@@ -1,0 +1,1 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED='0'; require('dotenv').config({path: '.env'}); const key = process.env.NEWSAPI_KEY; const q = encodeURIComponent('Singapore'); fetch('https://newsapi.org/v2/everything?q=' + q + '&sortBy=publishedAt&language=en&pageSize=10&apiKey=' + key).then(r=>r.json()).then(console.log).catch(console.error);

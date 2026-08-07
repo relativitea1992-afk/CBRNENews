@@ -3,7 +3,12 @@ import Dashboard from '@/components/Dashboard';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Home() {
+export default async function Home(
+  props: { searchParams?: Promise<{ snapshot?: string }> | { snapshot?: string } }
+) {
+  // In newer Next.js versions searchParams might be a Promise
+  const searchParams = await props.searchParams;
+  const isSnapshot = searchParams?.snapshot === 'true';
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   
   const incidents = await prisma.incident.findMany({
@@ -22,5 +27,5 @@ export default async function Home() {
     createdAt: i.createdAt.toISOString(),
   }));
 
-  return <Dashboard incidents={serializedIncidents} />;
+  return <Dashboard incidents={serializedIncidents} isSnapshot={isSnapshot} />;
 }

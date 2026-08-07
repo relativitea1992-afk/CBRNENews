@@ -25,6 +25,42 @@ interface Incident {
   advisory: string | null;
 }
 
+export function StaticSnapshotMap({ incidents }: { incidents: Incident[] }) {
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
+  const ptParam = incidents
+    .filter(i => i.latitude && i.longitude)
+    .map(i => {
+      let color = 'pm2rdm'; // default red
+      if (i.type === 'Odour') color = 'pm2ylm';
+      else if (i.type === 'Chemical') color = 'pm2vvm';
+      else if (i.type === 'Biological') color = 'pm2grm';
+      else if (i.type === 'Nuclear' || i.type === 'Radiological') color = 'pm2orm';
+      else if (i.type === 'Explosive') color = 'pm2rdm';
+      return `${i.longitude},${i.latitude},${color}`;
+    })
+    .join('~');
+  
+  const ptQuery = ptParam ? `&pt=${ptParam}` : '';
+  const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=11&l=map&lang=en_US&size=650,450${ptQuery}`;
+  
+  return (
+    <div className="absolute inset-0 z-0 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img 
+          src={staticMapUrl} 
+          alt="Static Map" 
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+          onLoad={() => setIsImageLoaded(true)} 
+          onError={(e) => {
+            console.error('Static map failed to load', e);
+            setIsImageLoaded(true); // Fallback so we don't timeout forever
+          }} 
+      />
+      {isImageLoaded && <div id="map-ready" className="hidden"></div>}
+    </div>
+  );
+}
+
 const getTypeConfig = (type: string) => {
   switch (type) {
     case 'Odour': return { color: '#eab308', icon: <Wind size={16} /> }; // yellow
@@ -37,7 +73,7 @@ const getTypeConfig = (type: string) => {
   }
 };
 
-export default function Dashboard({ incidents }: { incidents: Incident[] }) {
+export default function Dashboard({ incidents, isSnapshot = false }: { incidents: Incident[], isSnapshot?: boolean }) {
   const router = useRouter();
   const [isClearing, setIsClearing] = useState(false);
 
@@ -111,7 +147,7 @@ export default function Dashboard({ incidents }: { incidents: Incident[] }) {
                       <time className="text-xs text-slate-500">{DateTime.fromISO(incident.createdAt).toRelative()}</time>
                     </div>
                     <h3 className="font-medium text-slate-100 mb-2 leading-snug">{incident.headline}</h3>
-                    <p className="text-sm text-slate-400 mb-3 line-clamp-3">{incident.summary}</p>
+                    <p className="text-sm text-slate-400 mb-3 whitespace-pre-wrap leading-relaxed">{incident.summary}</p>
                     {incident.advisory && (
                       <div className="mb-3 p-3 bg-red-950/30 border border-red-900/50 rounded-lg">
                         <div className="flex justify-between items-center mb-2">
@@ -137,7 +173,7 @@ export default function Dashboard({ incidents }: { incidents: Incident[] }) {
 
         {/* Right Panel: Map */}
         <section className="w-full lg:w-2/3 h-[50vh] min-h-[50vh] lg:h-full lg:min-h-[calc(100vh-120px)] relative rounded-xl overflow-hidden glass-panel border border-slate-700/50 shadow-lg">
-          <MapWithNoSSR incidents={incidents} />
+          {isSnapshot ? <StaticSnapshotMap incidents={incidents} /> : <MapWithNoSSR incidents={incidents} />}
           
           {/* Map Legend Overlay */}
           <div className="absolute bottom-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl z-[1000] text-xs">
