@@ -137,12 +137,22 @@ export async function POST(request: NextRequest) {
               if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
 
               // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Models: gemini-1.5-flash
+              // Also supports old format: via Gemini [gemini-2.0-flash] | Tokens Consumed: 1234 [In: 1000, Out: 234]
               const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Models: ([\w., -]+))?/);
               if (tokenMatch) {
                 const tot = parseInt(tokenMatch[1]);
                 const prm = parseInt(tokenMatch[2]);
                 const cnd = parseInt(tokenMatch[3]);
-                const modelString = tokenMatch[4] || 'gemini-1.5-flash';
+                
+                let modelString = tokenMatch[4];
+                if (!modelString) {
+                   const fallbackMatch = detail.match(/via (?:Gemini|AI|Gemma|Gemini & Gemma) \[(.*?)\]/);
+                   if (fallbackMatch) {
+                       modelString = fallbackMatch[1];
+                   } else {
+                       modelString = 'gemini-1.5-flash';
+                   }
+                }
                 
                 totalTokens += tot; promptTokens += prm; candidateTokens += cnd;
                 triagingTokens.total += tot; triagingTokens.prompt += prm; triagingTokens.candidate += cnd;
@@ -150,11 +160,8 @@ export async function POST(request: NextRequest) {
                 const models = modelString.split(',').map(s => s.trim());
                 for (const mdl of models) {
                   if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
-                  // We can only attribute total equally or accurately if known. Since fetch-news aggregates,
-                  // we'll just add the total to the first model, or distribute. Let's attribute to the primary model for simplicity if multiple, 
-                  // or just log it all to the first model.
                   modelsUsage[mdl].total += tot; modelsUsage[mdl].prompt += prm; modelsUsage[mdl].candidate += cnd;
-                  break; // only attribute to the first model in the list to avoid double counting tokens
+                  break; // attribute to first model to avoid double counting
                 }
               }
             } else if (log.jobName === 'hourly-report') {
