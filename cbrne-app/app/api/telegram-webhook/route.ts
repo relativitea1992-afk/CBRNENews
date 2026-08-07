@@ -64,7 +64,6 @@ export async function POST(request: NextRequest) {
               details: `Triggered by ${requesterName} (IP: ${telegramIp})`
             }
           });
-          manualLogId = log.id;
         } catch (e) {
           console.error('Failed to log manual command:', e);
         }
@@ -81,9 +80,9 @@ export async function POST(request: NextRequest) {
         });
 
         if (activeIncidents.length === 0) {
-          await sendTrackedMessage(chatId, "笨・<b>Status:</b> No active CBRNE/Odour threats detected in the last 24 hours.");
+          await sendTrackedMessage(chatId, "✅ <b>Status:</b> No active CBRNE/Odour threats detected in the last 24 hours.");
         } else {
-          let msg = `笞�・・<b>Status:</b> ${activeIncidents.length} active threat(s) detected in the last 24 hours:\n\n`;
+          let msg = `⚠️ <b>Status:</b> ${activeIncidents.length} active threat(s) detected in the last 24 hours:\n\n`;
           activeIncidents.forEach((inc, idx) => {
             msg += `${idx + 1}. [${inc.type}] <a href="${inc.sourceUrl}">${inc.headline}</a>\n`;
           });
@@ -98,7 +97,7 @@ export async function POST(request: NextRequest) {
         if (!latestIncident) {
           await sendTrackedMessage(chatId, "No relevant threats found in the database.");
         } else {
-           let msg = `�剥 <b>LATEST THREAT</b>\n\n<b>Headline:</b> ${latestIncident.headline}\n<b>Type:</b> ${latestIncident.type}\n<b>Summary:</b> ${latestIncident.summary}`;
+           let msg = `🔍 <b>LATEST THREAT</b>\n\n<b>Headline:</b> ${latestIncident.headline}\n<b>Type:</b> ${latestIncident.type}\n<b>Summary:</b> ${latestIncident.summary}`;
            
            if (latestIncident.advisory) {
              msg += `\n\n<b>Advisory:</b>\n${latestIncident.advisory}`;
@@ -109,7 +108,7 @@ export async function POST(request: NextRequest) {
            await sendTrackedMessage(chatId, msg, { lat: latestIncident.lat, lon: latestIncident.lng, type: latestIncident.type as any });
         }
       } else if (text.startsWith('/resource')) {
-        await sendTrackedMessage(chatId, "竢ｳ <b>Generating resource consumption report...</b>");
+        await sendTrackedMessage(chatId, "⏳ <b>Generating resource consumption report...</b>");
         try {
           const oneDayAgo = DateTime.now().minus({ days: 1 }).toJSDate();
           
@@ -202,7 +201,7 @@ export async function POST(request: NextRequest) {
               const egressMatch = detail.match(/Egress: (\d+) bytes/);
               if (egressMatch) egressBytes += parseInt(egressMatch[1]);
               
-              // Tokens Consumed [Headline Selection: 10 [In: 5, Out: 5] (gemini-x) | Gemini Assessment: 20 [In: 10, Out: 10] (gemini-y)]
+              // Tokens Consumed [Headline Selection: 10 [In: 5, Out: 5] (model-a) | Gemini Assessment: 20 [In: 10, Out: 10] (model-b)]
               const selectionMatch = detail.match(/Headline Selection: (\d+)(?: \[In: (\d+), Out: (\d+)\])? \(([\w.-]+)\)/);
               if (selectionMatch) {
                 const tok = parseInt(selectionMatch[1]);
@@ -259,14 +258,14 @@ export async function POST(request: NextRequest) {
           const dateOpts = { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' } as Intl.DateTimeFormatOptions;
           const startStr = oneDayAgo.toLocaleString('en-SG', dateOpts);
           const endStr = new Date().toLocaleString('en-SG', dateOpts);
-          let msg = `�投 <b>Resource & Infrastructure Report</b>\n`;
+          let msg = `📊 <b>Resource & Infrastructure Report</b>\n`;
           msg += `<i>Report Window: ${startStr} to ${endStr}</i>\n\n`;
-          msg += `�､・<b>Automated Compute (Cron):</b>\n`;
+          msg += `🤖 <b>Automated Compute (Cron):</b>\n`;
           msg += `- Threat Scanner (/fetch-news): ${fetchNewsRuns} runs\n`;
           msg += `- System Heartbeat (/hourly-report): ${hourlyReportRuns} runs\n`;
           msg += `- Auto-Purge (/purge): ${purgeRuns} runs\n\n`;
           
-          msg += `�側 <b>Manual Compute (Telegram):</b>\n`;
+          msg += `👤 <b>Manual Compute (Telegram):</b>\n`;
           let totalManual = 0;
           Object.entries(manualRuns).forEach(([cmd, cnt]) => {
             msg += `- ${cmd.replace('manual-', '')}: ${cnt} requests\n`;
@@ -274,18 +273,18 @@ export async function POST(request: NextRequest) {
           });
           if (totalManual === 0) msg += `- No manual commands executed\n`;
           
-          msg += `\n�ｧ� <b>AI Token Usage:</b>\n`;
+          msg += `\n🧠 <b>AI Token Usage:</b>\n`;
           msg += `<b>By Model:</b>\n`;
           Object.entries(modelsUsage).forEach(([mdl, usage]) => {
             msg += `- ${mdl}: ${formatTokens(usage.total)} [In: ${formatTokens(usage.prompt)} | Out: ${formatTokens(usage.candidate)}]\n`;
           });
           
           msg += `\n<b>By Function:</b>\n`;
-          msg += `- Threat Triage & Assessment: ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
-          msg += `- System Heartbeat Analysis: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
+          msg += `- Threat Triaging & Assessment: ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
+          msg += `- Gemini Gov.sg Assessment: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
           msg += `- Headline Selection: ${formatTokens(headlineTokens.total)} tokens [In: ${formatTokens(headlineTokens.prompt)} | Out: ${formatTokens(headlineTokens.candidate)}]\n\n`;
           
-          msg += `�堂 <b>Data Processing & Ingress:</b>\n`;
+          msg += `📰 <b>Data Processing & Ingress:</b>\n`;
           msg += `- Total Articles Scanned: ${articlesScanned}\n`;
           msg += `- New Threats Detected (24h): ${activeThreats24h}\n`;
           msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n`;
@@ -298,7 +297,7 @@ export async function POST(request: NextRequest) {
             });
           }
           
-          msg += `\n�沈 <b>Storage & Infrastructure:</b>\n`;
+          msg += `\n💾 <b>Storage & Infrastructure:</b>\n`;
           msg += `- Total Database Size: ${dbSize}\n`;
           msg += `- Active Threats (Last 24h): ${activeThreats24h} rows\n`;
           msg += `- Total Analyzed URLs (All Time): ${allIncidentRows.toLocaleString()} rows\n`;
@@ -307,28 +306,28 @@ export async function POST(request: NextRequest) {
           await sendTrackedMessage(chatId, msg);
         } catch (e: any) {
           console.error('Error generating resource report:', e);
-          await sendTrackedMessage(chatId, `笶・<b>Failed to generate resource report:</b> ${e.message}`);
+          await sendTrackedMessage(chatId, `❌ <b>Failed to generate resource report:</b> ${e.message}`);
         }
       } else if (text.startsWith('/test')) {
-        await sendTrackedMessage(chatId, "竢ｳ <b>Generating test report...</b> This may take a few seconds.");
+        await sendTrackedMessage(chatId, "⏳ <b>Generating test report...</b> This may take a few seconds.");
         try {
           const { generateHourlyReport } = await import('../cron/hourly-report/route');
           await generateHourlyReport();
         } catch (e: any) {
           console.error('Error generating test hourly report:', e);
-          await sendTrackedMessage(chatId, `笶・<b>Failed to generate test report:</b> ${e.message}`);
+          await sendTrackedMessage(chatId, `❌ <b>Failed to generate test report:</b> ${e.message}`);
         }
       } else if (text.startsWith('/clear')) {
         const deleted = await prisma.incident.deleteMany({
           where: { isRelevant: true }
         });
-        await sendTrackedMessage(chatId, `�ｧｹ <b>Alerts Cleared:</b> ${deleted.count} active threat(s) have been removed from the dashboard.`);
+        await sendTrackedMessage(chatId, `🧹 <b>Alerts Cleared:</b> ${deleted.count} active threat(s) have been removed from the dashboard.`);
       } else if (text.startsWith('/snapshot')) {
         const dashboardBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
         const dashboardUrl = `${dashboardBaseUrl}?snapshot=true`;
         const microlinkUrl = `https://api.microlink.io?url=${encodeURIComponent(dashboardUrl)}&screenshot=true&meta=false&embed=screenshot.url&waitFor=%23map-ready&adblock=false&force=true`;
         
-        await sendTrackedMessage(chatId, "�萄 <b>Taking snapshot of the live dashboard...</b>");
+        await sendTrackedMessage(chatId, "📸 <b>Taking snapshot of the live dashboard...</b>");
         
         try {
           const imageReq = await fetch(microlinkUrl);
@@ -346,21 +345,20 @@ export async function POST(request: NextRequest) {
               method: 'POST',
               body: formData,
             });
-            await trackEgress(blob.size);
             if (!photoResponse.ok) {
               console.error('Failed to send snapshot photo:', await photoResponse.text());
-              await sendTrackedMessage(chatId, "笶・Failed to send dashboard snapshot photo.");
+              await sendTrackedMessage(chatId, "❌ Failed to send dashboard snapshot photo.");
             }
           } else {
             console.error('Failed to fetch snapshot from Microlink:', await imageReq.text());
-            await sendTrackedMessage(chatId, "笶・Failed to generate dashboard snapshot.");
+            await sendTrackedMessage(chatId, "❌ Failed to generate dashboard snapshot.");
           }
         } catch (e) {
           console.error('Error generating snapshot:', e);
-          await sendTrackedMessage(chatId, "笶・Error generating dashboard snapshot.");
+          await sendTrackedMessage(chatId, "❌ Error generating dashboard snapshot.");
         }
       } else if (text.startsWith('/pingtest')) {
-        await sendTrackedMessage(chatId, "竢ｳ <b>Running System Diagnostics...</b>\nFetching IPs and calculating latency. This will take a few seconds.");
+        await sendTrackedMessage(chatId, "⏳ <b>Running System Diagnostics...</b>\nFetching IPs and calculating latency. This will take a few seconds.");
         
         const { after } = await import('next/server');
         after(async () => {
@@ -423,7 +421,7 @@ export async function POST(request: NextRequest) {
 
             const ping = async (group: string, name: string, urlStr: string, testFn: () => Promise<string | {loc?: string, label?: string} | void>) => {
               const start = Date.now();
-              let status = '�閥 ERR';
+              let status = '🔴 ERR';
               let latency = 0;
               let dynamicLoc: string | void = undefined;
               let resultName = name;
@@ -436,7 +434,7 @@ export async function POST(request: NextRequest) {
                   dynamicLoc = res;
                 }
                 latency = Date.now() - start;
-                status = '�泙 OK';
+                status = '🟢 OK';
               } catch (e) {
                 latency = Date.now() - start;
               }
@@ -584,10 +582,10 @@ export async function POST(request: NextRequest) {
               }
             } catch (e) {}
 
-            let msg = `�投 <b>System Ping Test Results</b>\n�側 <i>Triggered by: ${requesterName}</i>\n�桃 <i>Test executed on ${sourceRegion}</i>\n\n<b>Telegram Webhook Server</b>\n笏・�桃 <i>${telegramLocation}</i>\n   笨・ONLINE | Webhook | Incoming Command\n\n`;
+            let msg = `📊 <b>System Ping Test Results</b>\n👤 <i>Triggered by: ${requesterName}</i>\n📍 <i>Test executed on ${sourceRegion}</i>\n\n<b>Telegram Webhook Server</b>\n└ 📍 <i>${telegramLocation}</i>\n   ✅ ONLINE | Webhook | Incoming Command\n\n`;
             
             for (const [groupName, groupData] of Object.entries(grouped)) {
-              msg += `<b>${groupName}</b>\n笏・�桃 <i>${groupData.loc}</i>\n`;
+              msg += `<b>${groupName}</b>\n└ 📍 <i>${groupData.loc}</i>\n`;
               for (const item of groupData.items) {
                 msg += `   ${item.status} | ${item.latency}ms | ${item.name}\n`;
               }
@@ -597,7 +595,7 @@ export async function POST(request: NextRequest) {
             await sendTrackedMessage(chatId, msg.trim());
           } catch (error) {
             console.error('Ping test error:', error);
-            await sendTrackedMessage(chatId, "�閥 <b>Error:</b> Failed to complete ping test.");
+            await sendTrackedMessage(chatId, "🔴 <b>Error:</b> Failed to complete ping test.");
           }
         });
       }
@@ -609,4 +607,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to process webhook' }, { status: 500 });
   }
 }
-

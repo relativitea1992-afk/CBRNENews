@@ -227,11 +227,11 @@ export async function generateHourlyReport() {
 
     const [speedData, dirData, pm25Data] = envDataPromise;
 
-    const extractStationStatus = (data: any) => {
-      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: 0, active: 0, missing: [] };
+    const extractStationStatus = (data: any, expectedTotal: number = 17) => {
+      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: expectedTotal, active: 0, missing: [] };
       const stations = data.data.stations;
       const readings = data.data.readings;
-      const total = stations.length;
+      const total = Math.max(stations.length, expectedTotal);
       
       if (readings.length === 0) return { total, active: 0, missing: stations.map((s: any) => s.name) };
 
@@ -295,8 +295,8 @@ export async function generateHourlyReport() {
       return { total: 5, active, missing: missingInfo };
     };
 
-    const speedStats = extractStationStatus(speedData);
-    const dirStats = extractStationStatus(dirData);
+    const speedStats = extractStationStatus(speedData, 17);
+    const dirStats = extractStationStatus(dirData, 17);
     const pmStats = extractPm25Status(pm25Data);
 
     const formatMsg = (name: string, stats: {total: number, active: number, missing: string[]}, unit: string) => {
@@ -462,12 +462,12 @@ ${newsContent}`,
         : ` (${geminiAssessmentResponse.modelUsed})`;
         
       totalSelectionTokens = geminiSelection.usageMetadata?.totalTokenCount || 0;
-      let selectionPromptTokens = geminiSelection.usageMetadata?.promptTokenCount || 0;
-      let selectionCandidateTokens = geminiSelection.usageMetadata?.candidatesTokenCount || 0;
+      selectionPromptTokens = geminiSelection.usageMetadata?.promptTokenCount || 0;
+      selectionCandidateTokens = geminiSelection.usageMetadata?.candidatesTokenCount || 0;
       selectionModel = geminiSelection.modelUsed || 'Unknown';
       totalAssessmentTokens = geminiAssessmentResponse.usageMetadata?.totalTokenCount || 0;
-      let assessmentPromptTokens = geminiAssessmentResponse.usageMetadata?.promptTokenCount || 0;
-      let assessmentCandidateTokens = geminiAssessmentResponse.usageMetadata?.candidatesTokenCount || 0;
+      assessmentPromptTokens = geminiAssessmentResponse.usageMetadata?.promptTokenCount || 0;
+      assessmentCandidateTokens = geminiAssessmentResponse.usageMetadata?.candidatesTokenCount || 0;
       assessmentModel = geminiAssessmentResponse.modelUsed || 'Unknown';
 
       threatSection += heartbeatSection.replace('Top News Pulse:', `Top News Pulse${selectionTokenStr}:`);
