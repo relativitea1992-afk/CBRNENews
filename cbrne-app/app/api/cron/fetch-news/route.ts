@@ -44,8 +44,8 @@ export async function GET(request: Request) {
   try {
     const newsApiKey = process.env.NEWSAPI_KEY;
     if (newsApiKey) {
-      // Searching globally but emphasizing keywords
-      const query = encodeURIComponent('("odour incident" OR "toxic smell" OR leak OR "potential release" OR CBRNE OR chemical OR biological OR radiological OR nuclear OR explosive OR haze OR "air quality") AND (Singapore OR Johor OR Batam OR Riau OR Pasir Gudang)');
+      // Searching globally without location constraints to get more articles
+      const query = encodeURIComponent('("odour incident" OR "toxic smell" OR leak OR "potential release" OR CBRNE OR chemical OR biological OR radiological OR nuclear OR explosive OR haze OR "air quality")');
       const res = await fetch(`https://newsapi.org/v2/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=10&apiKey=${newsApiKey}`);
       const text = await res.text();
       ingressBytes += Buffer.byteLength(text, 'utf8');
