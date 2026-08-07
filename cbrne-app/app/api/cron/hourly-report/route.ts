@@ -34,9 +34,11 @@ export async function generateHourlyReport() {
       let outcome = run.details || run.status;
       // Escape raw text first
       outcome = escapeHtml(outcome);
-      outcome = outcome.replace(/ via /g, '\nProcessed via ')
-                       .replace(/ \| Tokens Consumed:/g, '\nTokens Consumed:')
-                       .replace(/\. Found/g, '.\nFound')
+      
+      // Remove detailed AI metrics to keep the Telegram report concise
+      outcome = outcome.replace(/(?: via | \| Tokens ).*?bytes/g, '');
+      
+      outcome = outcome.replace(/\. Found/g, '.\nFound')
                        .replace(/\. No relevant threats/g, '.\nNo relevant threats')
                        .replace(/\. Threats detected!/g, '.\nThreats detected!');
       const icon = run.status === 'SUCCESS' ? '✅' : '❌';
