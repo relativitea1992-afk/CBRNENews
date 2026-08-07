@@ -132,6 +132,10 @@ export async function GET(request: Request) {
           }
         });
 
+        const tokenConsumptionStr = triage.usageMetadata 
+          ? `\n<b>Tokens Consumed:</b> ${triage.usageMetadata.totalTokenCount} [In: ${triage.usageMetadata.promptTokenCount}, Out: ${triage.usageMetadata.candidatesTokenCount}]`
+          : '';
+
         // Send Telegram Alert
         const alertMsg = `🚨 <b>NEW THREAT DETECTED</b> 🚨
         
@@ -142,7 +146,7 @@ export async function GET(request: Request) {
 <b>Threat Assessment:</b>
 ${escapeHtml(triage.summary)}
 
-${triage.advisory ? `<b>Advisory:</b>\n${escapeHtml(triage.advisory)}\n\n` : ''}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}
+${triage.advisory ? `<b>Advisory:</b>\n${escapeHtml(triage.advisory)}\n\n` : ''}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}${tokenConsumptionStr}
 <b>Link:</b> ${escapeHtml(article.url)}`;
 
         await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
