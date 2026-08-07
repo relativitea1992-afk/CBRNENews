@@ -229,6 +229,9 @@ export async function POST(request: NextRequest) {
               purgeRuns++;
             } else if (log.jobName.startsWith('manual-')) {
               manualRuns[log.jobName] = (manualRuns[log.jobName] || 0) + 1;
+              const detail = log.details || '';
+              const egressMatch = detail.match(/Egress: (\d+) bytes/);
+              if (egressMatch) egressBytes += parseInt(egressMatch[1]);
             }
           }
 
@@ -275,13 +278,14 @@ export async function POST(request: NextRequest) {
           
           msg += `\n🧠 <b>AI Token Usage:</b>\n`;
           msg += `<b>By Model:</b>\n`;
-          Object.entries(modelsUsage).forEach(([mdl, usage]) => {
+          const sortedModels = Object.entries(modelsUsage).sort((a, b) => b[1].total - a[1].total);
+          sortedModels.forEach(([mdl, usage]) => {
             msg += `- ${mdl}: ${formatTokens(usage.total)} [In: ${formatTokens(usage.prompt)} | Out: ${formatTokens(usage.candidate)}]\n`;
           });
           
           msg += `\n<b>By Function:</b>\n`;
           msg += `- Threat Triaging & Assessment: ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
-          msg += `- Gemini Gov.sg Assessment: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
+          msg += `- Hourly System Pulse Summary: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
           msg += `- Headline Selection: ${formatTokens(headlineTokens.total)} tokens [In: ${formatTokens(headlineTokens.prompt)} | Out: ${formatTokens(headlineTokens.candidate)}]\n\n`;
           
           msg += `📰 <b>Data Processing & Ingress:</b>\n`;
