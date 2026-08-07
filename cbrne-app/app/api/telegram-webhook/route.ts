@@ -210,7 +210,10 @@ export async function POST(request: NextRequest) {
             console.error('Could not fetch DB size:', dbErr);
           }
           
-          const incidentRows = await prisma.incident.count();
+          const allIncidentRows = await prisma.incident.count();
+          const activeThreats24h = await prisma.incident.count({
+            where: { isRelevant: true, createdAt: { gte: oneDayAgo } }
+          });
           const logRows = await prisma.systemLog.count();
 
           const formatTokens = (t: number) => t.toLocaleString();
@@ -223,9 +226,12 @@ export async function POST(request: NextRequest) {
           msg += `- Auto-Purge (/purge): ${purgeRuns} runs\n\n`;
           
           msg += `👤 <b>Manual Compute (Telegram):</b>\n`;
+          let totalManual = 0;
           Object.entries(manualRuns).forEach(([cmd, cnt]) => {
-            msg += `- ${cmd.replace('manual-', '')}: ${cnt} runs\n`;
+            msg += `- ${cmd.replace('manual-', '')}: ${cnt} requests\n`;
+            totalManual += cnt;
           });
+          if (totalManual === 0) msg += `- No manual commands executed\n`;
           
           msg += `\n🧠 <b>AI Token Usage:</b>\n`;
           msg += `<b>By Model:</b>\n`;
@@ -234,23 +240,26 @@ export async function POST(request: NextRequest) {
           });
           
           msg += `\n<b>By Function:</b>\n`;
-          msg += `- Threat Triaging (/fetch-news): ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
-          msg += `- Gemini Assessment: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
+          msg += `- Threat Triage & Assessment: ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
+          msg += `- Gemini Gov.sg Assessment: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
           msg += `- Headline Selection: ${formatTokens(headlineTokens.total)} tokens [In: ${formatTokens(headlineTokens.prompt)} | Out: ${formatTokens(headlineTokens.candidate)}]\n\n`;
           
           msg += `📰 <b>Data Processing & Ingress:</b>\n`;
           msg += `- Total Articles Scanned: ${articlesScanned}\n`;
-          msg += `- Threats Detected: ${threats}\n`;
+          msg += `- New Threats Detected (24h): ${activeThreats24h}\n`;
           msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n\n`;
           
-          msg += `<b>Articles By Source:</b>\n`;
-          Object.entries(sourceBreakdown).forEach(([src, cnt]) => {
-            msg += `- ${src}: ${cnt}\n`;
-          });
+          if (Object.keys(sourceBreakdown).length > 0) {
+            msg += `<b>Articles By Source:</b>\n`;
+            Object.entries(sourceBreakdown).forEach(([src, cnt]) => {
+              msg += `- ${src}: ${cnt}\n`;
+            });
+          }
           
           msg += `\n💾 <b>Storage & Infrastructure:</b>\n`;
           msg += `- Total Database Size: ${dbSize}\n`;
-          msg += `- Active Threat Records: ${incidentRows.toLocaleString()} rows\n`;
+          msg += `- Active Threats (Last 24h): ${activeThreats24h} rows\n`;
+          msg += `- Total Analyzed URLs (All Time): ${allIncidentRows.toLocaleString()} rows\n`;
           msg += `- System Logs Retained: ${logRows.toLocaleString()} rows\n`;
 
           await sendTelegramMessage(chatId, msg);

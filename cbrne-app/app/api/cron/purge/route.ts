@@ -25,7 +25,23 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, deletedCount: result.count });
+    const logResult = await prisma.systemLog.deleteMany({
+      where: {
+        createdAt: {
+          lt: oneYearAgo,
+        },
+      },
+    });
+
+    await prisma.systemLog.create({
+      data: {
+        jobName: 'purge',
+        status: 'SUCCESS',
+        details: `Purged ${result.count} incidents and ${logResult.count} system logs older than 1 year.`
+      }
+    });
+
+    return NextResponse.json({ success: true, deletedIncidents: result.count, deletedLogs: logResult.count });
   } catch (error) {
     console.error('Error purging data:', error);
     return NextResponse.json({ error: 'Failed to purge data' }, { status: 500 });
