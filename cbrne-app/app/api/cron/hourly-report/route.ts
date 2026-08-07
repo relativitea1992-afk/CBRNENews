@@ -156,6 +156,8 @@ export async function generateHourlyReport() {
   let stSuccessCount = 0;
   let totalStLatency = 0;
 
+  let ingressBytes = 0;
+
   await Promise.all(stFeeds.map(async (feed) => {
     try {
       const start = Date.now();
@@ -165,6 +167,7 @@ export async function generateHourlyReport() {
         stSuccessCount++;
         totalStLatency += latency;
         const xml = await res.text();
+        ingressBytes += Buffer.byteLength(xml, 'utf8');
         const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
         if (titleMatch) {
           const title = titleMatch[1].replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
@@ -204,6 +207,110 @@ export async function generateHourlyReport() {
     supabaseStatus = `❌ FAILED (${error.message || 'Unknown'})`;
   }
 
+  // 5b. Check Gov.sg Environmental APIs
+  let govSgStatus = 'Unknown';
+  try {
+    const dateStr = new Date(Date.now() + 8*60*60*1000).toISOString().split('T')[0];
+    const start = Date.now();
+    const envDataPromise = await Promise.all([
+      fetch('https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=' + dateStr).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
+      fetch('https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=' + dateStr).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
+      fetch('https://api-open.data.gov.sg/v2/real-time/api/pm25?date=' + dateStr).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null)
+    ]);
+    const latency = Date.now() - start;
+
+    const [speedData, dirData, pm25Data] = envDataPromise;
+
+    const extractStationStatus = (data: any) => {
+      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: 0, active: 0, missing: [] };
+      const stations = data.data.stations;
+      const readings = data.data.readings;
+      const total = stations.length;
+      
+      if (readings.length === 0) return { total, active: 0, missing: stations.map((s: any) => s.name) };
+
+      const latestReading = readings[readings.length - 1];
+      const readingData = latestReading?.data || [];
+      const activeStationIds = new Set(readingData.map((d: any) => d.stationId));
+      
+      const missingStations = stations.filter((s: any) => !activeStationIds.has(s.id));
+      
+      const missingInfo = missingStations.map((station: any) => {
+        let downSince = latestReading.timestamp;
+        for (let i = readings.length - 1; i >= 0; i--) {
+            const rData = readings[i].data || [];
+            if (rData.some((d: any) => d.stationId === station.id)) {
+                if (i + 1 < readings.length) downSince = readings[i + 1].timestamp;
+                break;
+            } else if (i === 0) {
+                downSince = 'start of day';
+            }
+        }
+        
+        let timeStr = downSince;
+        if (downSince.includes('T')) {
+            timeStr = downSince.split('T')[1].substring(0, 5);
+        }
+        return `${station.name} since ${timeStr}`;
+      });
+
+      return { total, active: readingData.length, missing: missingInfo };
+    };
+    
+    const extractPm25Status = (data: any) => {
+      if (!data || !data.data || !data.data.items || data.data.items.length === 0) return { total: 5, active: 0, missing: ['all'] };
+      const items = data.data.items;
+      const latestReading = items[items.length - 1];
+      const keys = Object.keys(latestReading?.readings?.pm25_one_hourly || {});
+      const active = keys.length;
+      
+      const expectedRegions = ['north', 'south', 'east', 'west', 'central'];
+      const missingRegions = expectedRegions.filter(r => !keys.includes(r));
+      
+      const missingInfo = missingRegions.map(region => {
+        let downSince = latestReading.timestamp;
+        for (let i = items.length - 1; i >= 0; i--) {
+            const rKeys = Object.keys(items[i]?.readings?.pm25_one_hourly || {});
+            if (rKeys.includes(region)) {
+                if (i + 1 < items.length) downSince = items[i + 1].timestamp;
+                break;
+            } else if (i === 0) {
+                downSince = 'start of day';
+            }
+        }
+        
+        let timeStr = downSince;
+        if (downSince.includes('T')) {
+            timeStr = downSince.split('T')[1].substring(0, 5);
+        }
+        return `${region} since ${timeStr}`;
+      });
+
+      return { total: 5, active, missing: missingInfo };
+    };
+
+    const speedStats = extractStationStatus(speedData);
+    const dirStats = extractStationStatus(dirData);
+    const pmStats = extractPm25Status(pm25Data);
+
+    const formatMsg = (name: string, stats: {total: number, active: number, missing: string[]}, unit: string) => {
+      if (!stats.total) return `${name}: FAILED`;
+      let msg = `${name}: ${stats.active}/${stats.total} ${unit} OK`;
+      if (stats.missing.length > 0) {
+        msg += ` (Down: ${stats.missing.join(', ')})`;
+      }
+      return msg;
+    };
+
+    const windSpeedMsg = formatMsg('Wind Speed', speedStats, 'weather stations');
+    const windDirMsg = formatMsg('Wind Dir', dirStats, 'weather stations');
+    const pm25Msg = formatMsg('PM2.5', pmStats, 'regions');
+
+    govSgStatus = `✅ ONLINE (${latency}ms)\n  • ${windSpeedMsg}\n  • ${windDirMsg}\n  • ${pm25Msg}`;
+  } catch (error: any) {
+    govSgStatus = `❌ FAILED (${error.message || 'Unknown'})`;
+  }
+
   // 6. Check Overall Compute on Vercel
   const memoryUsage = process.memoryUsage();
   const memoryMB = Math.round(memoryUsage.rss / 1024 / 1024);
@@ -235,6 +342,12 @@ export async function generateHourlyReport() {
 
   // Run extracted news through Gemini for CBRNE assessment & top headline selection
   let heartbeatSection = `\n<b>💓 Heartbeat — Top News Pulse:</b>\n`;
+  
+  let totalSelectionTokens = 0;
+  let selectionModel = 'Unknown';
+  let totalAssessmentTokens = 0;
+  let assessmentModel = 'Unknown';
+  
   if (newsApiTopHeadline) {
     heartbeatSection += `📰 <b>NewsAPI:</b> ${newsApiTopHeadline}\n`;
   } else {
@@ -256,9 +369,9 @@ export async function generateHourlyReport() {
       // Parallelize the Gemini operations to stay within Vercel timeout constraints while keeping them separate
       const [geminiSelection, geminiAssessmentResponse] = await Promise.all([
         geminiGenerate({
-          contents: `You are a CBRNE threat analyst monitoring Singapore.
+          contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds.
-Task: Review the [CNA Articles] and [Straits Times Articles]. Select the 2 most CBRNE-relevant headlines for CNA and the 2 most relevant for Straits Times. If there's no obvious CBRNE relevance, just select the top 2 major news.
+Task: Review the [CNA Articles] and [Straits Times Articles]. Select the 2 most relevant headlines (prioritizing CBRNE, Haze, Air Quality, and Odour) for CNA and the 2 most relevant for Straits Times. If there's no obvious relevance, just select the top 2 major news.
 
 Output ONLY a valid raw JSON object (without markdown blocks) in the following structure:
 {
@@ -271,9 +384,9 @@ ${newsContent}`,
           config: { responseMimeType: "application/json" }
         }),
         geminiGenerate({
-          contents: `You are a CBRNE threat analyst monitoring Singapore.
+          contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds.
-Task 1: Provide a detailed threat assessment based on all articles (Yes/No CBRNE relevance + brief reasoning).
+Task 1: Provide a detailed threat assessment based on all articles (Yes/No threat relevance + brief reasoning). Include Haze and Odour as threats.
 Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
 Task 3: Provide an actionable advisory based strictly on the assessment (or "None").
 
@@ -341,6 +454,11 @@ ${newsContent}`,
       const assessmentTokenStr = geminiAssessmentResponse.usageMetadata?.totalTokenCount 
         ? ` (${geminiAssessmentResponse.modelUsed}, Tokens: ${geminiAssessmentResponse.usageMetadata.totalTokenCount} [In: ${geminiAssessmentResponse.usageMetadata.promptTokenCount}, Out: ${geminiAssessmentResponse.usageMetadata.candidatesTokenCount}])`
         : ` (${geminiAssessmentResponse.modelUsed})`;
+        
+      totalSelectionTokens = geminiSelection.usageMetadata?.totalTokenCount || 0;
+      selectionModel = geminiSelection.modelUsed || 'Unknown';
+      totalAssessmentTokens = geminiAssessmentResponse.usageMetadata?.totalTokenCount || 0;
+      assessmentModel = geminiAssessmentResponse.modelUsed || 'Unknown';
 
       threatSection += heartbeatSection.replace('Top News Pulse:', `Top News Pulse${selectionTokenStr}:`);
       threatSection += cnaPulse || `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
@@ -373,6 +491,7 @@ ${threatSection}
 ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 <b>CNA RSS Link:</b> ${cnaRssStatus}
 <b>ST RSS Link:</b> ${stRssStatus}
+<b>Gov sg Env APIs:</b> ${govSgStatus}
 <b>Supabase Link:</b> ${supabaseStatus}
 
 <b>Vercel Compute</b>
@@ -381,12 +500,18 @@ ${computeStatus}
 <i>Report generated automatically.</i>`;
 
   // 6. Send to Telegram
-  console.log("=== REPORT MSG ===");
-  console.log(reportMsg);
-  console.log("==================");
   if (process.env.TELEGRAM_CHAT_ID) {
     await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID, reportMsg);
   }
+
+  // Return metrics for logging
+  return {
+    ingressBytes,
+    totalSelectionTokens,
+    selectionModel,
+    totalAssessmentTokens,
+    assessmentModel
+  };
 }
 
 import { after } from 'next/server';
@@ -406,14 +531,19 @@ export async function GET(request: Request) {
     // and run the heavy report generation safely in the background on Vercel
     after(async () => {
       try {
-        await generateHourlyReport();
+        const metrics = await generateHourlyReport();
+        
+        const tokenStr = `Tokens Consumed [Headline Selection: ${metrics.totalSelectionTokens} (${metrics.selectionModel}) | Gemini Assessment: ${metrics.totalAssessmentTokens} (${metrics.assessmentModel})]`;
+        const bandwidthStr = `Ingress: ${metrics.ingressBytes} bytes`;
+        
         await prisma.systemLog.create({
           data: {
             jobName: 'hourly-report',
             status: 'SUCCESS',
-            details: 'Hourly report successfully generated and sent to Telegram.'
+            details: `Heartbeat sent successfully. ${tokenStr} | ${bandwidthStr}`
           }
         });
+        
       } catch (e: any) {
         console.error('Background hourly report failed:', e);
         try {

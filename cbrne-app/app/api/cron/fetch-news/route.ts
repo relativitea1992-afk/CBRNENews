@@ -16,6 +16,14 @@ function escapeHtml(unsafe: string) {
     .replace(/'/g, "&#039;");
 }
 
+function linkifyCoordinates(text: string) {
+  // Matches [Station Name](MAP:Lat,Lng) and converts to <a href="...">Station Name</a>
+  let linked = text.replace(/\[([^\]]+)\]\(MAP:\s*([+-]?\d+\.?\d*),\s*([+-]?\d+\.?\d*)\)/gi, '<a href="https://www.google.com/maps/search/?api=1&query=$2,$3">$1</a>');
+  // Fallback to strip out raw Lat/Lng if the model forgets the format
+  linked = linked.replace(/\(Lat:\s*[+-]?\d+\.?\d*,\s*Lng:\s*[+-]?\d+\.?\d*\)/gi, '');
+  return linked;
+}
+
 export const maxDuration = 300; // Allow up to 5 minutes for AI processing
 
 export async function GET(request: Request) {
@@ -29,14 +37,18 @@ export async function GET(request: Request) {
 
   const articlesToProcess: { title: string, content: string, url: string, source: string, publishedAt: Date }[] = [];
 
+  let ingressBytes = 0;
+
   // 1. Fetch from NewsAPI
   try {
     const newsApiKey = process.env.NEWSAPI_KEY;
     if (newsApiKey) {
       // Searching globally but emphasizing keywords
-      const query = encodeURIComponent('("odour incident" OR "toxic smell" OR leak OR "potential release" OR CBRNE OR chemical OR biological OR radiological OR nuclear OR explosive) AND (Singapore OR Johor OR Batam OR Riau OR Pasir Gudang)');
+      const query = encodeURIComponent('("odour incident" OR "toxic smell" OR leak OR "potential release" OR CBRNE OR chemical OR biological OR radiological OR nuclear OR explosive OR haze OR "air quality") AND (Singapore OR Johor OR Batam OR Riau OR Pasir Gudang)');
       const res = await fetch(`https://newsapi.org/v2/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=10&apiKey=${newsApiKey}`);
-      const data = await res.json();
+      const text = await res.text();
+      ingressBytes += Buffer.byteLength(text, 'utf8');
+      const data = JSON.parse(text);
       
       if (data.articles) {
         for (const article of data.articles) {
@@ -66,7 +78,10 @@ export async function GET(request: Request) {
 
     for (const feedUrl of cnaFeeds) {
       try {
-        const feed = await parser.parseURL(feedUrl);
+        const res = await fetch(feedUrl);
+        const xml = await res.text();
+        ingressBytes += Buffer.byteLength(xml, 'utf8');
+        const feed = await parser.parseString(xml);
         // Take top 10 from each category to avoid overloading
         feed.items.slice(0, 10).forEach(item => {
           articlesToProcess.push({
@@ -137,16 +152,18 @@ export async function GET(request: Request) {
           : '';
 
         // Send Telegram Alert
+        const googleMapsLink = triage.lat && triage.lng ? `\n<b>Location:</b> <a href="https://www.google.com/maps/search/?api=1&query=${triage.lat},${triage.lng}">View on Google Maps</a>` : '';
+
         const alertMsg = `🚨 <b>NEW THREAT DETECTED</b> 🚨
         
 <b>Headline:</b> ${escapeHtml(triage.headline)}
 <b>Type:</b> ${escapeHtml(triage.type)}
-<b>Source:</b> ${escapeHtml(article.source)}
+<b>Source:</b> ${escapeHtml(article.source)}${googleMapsLink}
 
 <b>Threat Assessment:</b>
-${escapeHtml(triage.summary)}
+${linkifyCoordinates(escapeHtml(triage.summary))}
 
-${triage.advisory ? `<b>Advisory:</b>\n${escapeHtml(triage.advisory)}\n\n` : ''}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}${tokenConsumptionStr}
+${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.advisory))}\n\n` : ''}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}${tokenConsumptionStr}
 <b>Link:</b> ${escapeHtml(article.url)}`;
 
         await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
@@ -176,15 +193,16 @@ ${triage.advisory ? `<b>Advisory:</b>\n${escapeHtml(triage.advisory)}\n\n` : ''}
     
     const modelsStr = modelsUsed.size > 0 ? ` via ${providerName} [${modelArray.join(', ')}]` : '';
     const tokenStr = (totalPromptTokens > 0 || totalCandidatesTokens > 0) 
-      ? ` | Tokens Consumed: ${totalPromptTokens + totalCandidatesTokens} [In: ${totalPromptTokens}, Out: ${totalCandidatesTokens}]` 
+      ? ` | Tokens Consumed: ${totalPromptTokens + totalCandidatesTokens} [In: ${totalPromptTokens}, Out: ${totalCandidatesTokens}] | Models: ${modelArray.join(', ')}` 
       : '';
+    const bandwidthStr = ` | Ingress: ${ingressBytes} bytes`;
 
     // Log the execution to SystemLog
     await prisma.systemLog.create({
       data: {
         jobName: 'fetch-news',
         status: 'SUCCESS',
-        details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
+        details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}${bandwidthStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
       }
     });
   });

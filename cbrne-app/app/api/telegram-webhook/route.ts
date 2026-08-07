@@ -30,6 +30,22 @@ export async function POST(request: NextRequest) {
          return NextResponse.json({ success: true }); // Return 200 so Telegram stops retrying
       }
 
+      // Log manual commands to SystemLog
+      if (text.startsWith('/')) {
+        const commandName = text.split(' ')[0];
+        try {
+          await prisma.systemLog.create({
+            data: {
+              jobName: `manual-${commandName}`,
+              status: 'SUCCESS',
+              details: `Triggered by ${requesterName} (IP: ${telegramIp})`
+            }
+          });
+        } catch (e) {
+          console.error('Failed to log manual command:', e);
+        }
+      }
+
       if (text.startsWith('/status')) {
         const oneDayAgo = DateTime.now().minus({ days: 1 }).toJSDate();
         const activeIncidents = await prisma.incident.findMany({
@@ -67,6 +83,156 @@ export async function POST(request: NextRequest) {
            msg += `\n\n<b>Model Used:</b> ${latestIncident.modelUsed || 'Unknown'}`;
            msg += `\n<b>Link:</b> ${latestIncident.sourceUrl}`;
            await sendTelegramMessage(chatId, msg, { lat: latestIncident.lat, lon: latestIncident.lng, type: latestIncident.type as any });
+        }
+      } else if (text.startsWith('/resource')) {
+        await sendTelegramMessage(chatId, "⏳ <b>Generating resource consumption report...</b>");
+        try {
+          const oneDayAgo = DateTime.now().minus({ days: 1 }).toJSDate();
+          
+          const logs = await prisma.systemLog.findMany({
+            where: { createdAt: { gte: oneDayAgo } },
+            orderBy: { createdAt: 'desc' }
+          });
+          
+          const threats = await prisma.incident.count({
+            where: { createdAt: { gte: oneDayAgo } }
+          });
+          
+          let fetchNewsRuns = 0;
+          let hourlyReportRuns = 0;
+          let purgeRuns = 0;
+          const manualRuns: Record<string, number> = {};
+          
+          let totalTokens = 0, promptTokens = 0, candidateTokens = 0;
+          let triagingTokens = 0, assessmentTokens = 0, headlineTokens = 0;
+          const modelsUsage: Record<string, { total: number, prompt: number, candidate: number }> = {};
+          
+          let articlesScanned = 0;
+          let ingressBytes = 0;
+          const sourceBreakdown: Record<string, number> = {};
+
+          for (const log of logs) {
+            if (log.jobName === 'fetch-news') {
+              fetchNewsRuns++;
+              
+              const detail = log.details || '';
+              // Verified: Total 50 new articles (Singapore: 20, World: 15, Asia: 15)
+              const articlesMatch = detail.match(/Total (\d+) new articles/);
+              if (articlesMatch) articlesScanned += parseInt(articlesMatch[1]);
+              
+              const breakdownMatch = detail.match(/\((.*?)\)/);
+              if (breakdownMatch) {
+                const parts = breakdownMatch[1].split(', ');
+                for (const part of parts) {
+                  const [src, count] = part.split(': ');
+                  if (src && count) {
+                    sourceBreakdown[src] = (sourceBreakdown[src] || 0) + parseInt(count);
+                  }
+                }
+              }
+              
+              const bandwidthMatch = detail.match(/Ingress: (\d+) bytes/);
+              if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
+
+              // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Models: gemini-1.5-flash
+              const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Models: ([\w.-]+))?/);
+              if (tokenMatch) {
+                const tot = parseInt(tokenMatch[1]);
+                const prm = parseInt(tokenMatch[2]);
+                const cnd = parseInt(tokenMatch[3]);
+                const mdl = tokenMatch[4] || 'gemini-1.5-flash';
+                totalTokens += tot; promptTokens += prm; candidateTokens += cnd;
+                triagingTokens += tot;
+                if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
+                modelsUsage[mdl].total += tot; modelsUsage[mdl].prompt += prm; modelsUsage[mdl].candidate += cnd;
+              }
+            } else if (log.jobName === 'hourly-report') {
+              hourlyReportRuns++;
+              const detail = log.details || '';
+              
+              const bandwidthMatch = detail.match(/Ingress: (\d+) bytes/);
+              if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
+              
+              // Tokens Consumed [Headline Selection: 10 (gemini-x) | Gemini Assessment: 20 (gemini-y)]
+              const selectionMatch = detail.match(/Headline Selection: (\d+) \(([\w.-]+)\)/);
+              if (selectionMatch) {
+                const tok = parseInt(selectionMatch[1]);
+                const mdl = selectionMatch[2];
+                totalTokens += tok; headlineTokens += tok;
+                if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
+                modelsUsage[mdl].total += tok;
+              }
+              
+              const assessMatch = detail.match(/Gemini Assessment: (\d+) \(([\w.-]+)\)/);
+              if (assessMatch) {
+                const tok = parseInt(assessMatch[1]);
+                const mdl = assessMatch[2];
+                totalTokens += tok; assessmentTokens += tok;
+                if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
+                modelsUsage[mdl].total += tok;
+              }
+            } else if (log.jobName === 'purge') {
+              purgeRuns++;
+            } else if (log.jobName.startsWith('manual-')) {
+              manualRuns[log.jobName] = (manualRuns[log.jobName] || 0) + 1;
+            }
+          }
+
+          let dbSize = 'Unknown';
+          try {
+            const dbSizeResult: any[] = await prisma.$queryRaw`SELECT pg_size_pretty(pg_database_size(current_database())) as size`;
+            dbSize = dbSizeResult[0]?.size || 'Unknown';
+          } catch (dbErr) {
+            console.error('Could not fetch DB size:', dbErr);
+          }
+          
+          const incidentRows = await prisma.incident.count();
+          const logRows = await prisma.systemLog.count();
+
+          const formatTokens = (t: number) => t.toLocaleString();
+          const formatBytes = (b: number) => b > 1048576 ? (b / 1048576).toFixed(2) + ' MB' : (b / 1024).toFixed(2) + ' KB';
+
+          let msg = `📊 <b>Resource & Infrastructure Report (Last 24h)</b>\n\n`;
+          msg += `🤖 <b>Automated Compute (Cron):</b>\n`;
+          msg += `- Threat Scanner (/fetch-news): ${fetchNewsRuns} runs\n`;
+          msg += `- System Heartbeat (/hourly-report): ${hourlyReportRuns} runs\n`;
+          msg += `- Auto-Purge (/purge): ${purgeRuns} runs\n\n`;
+          
+          msg += `👤 <b>Manual Compute (Telegram):</b>\n`;
+          Object.entries(manualRuns).forEach(([cmd, cnt]) => {
+            msg += `- ${cmd.replace('manual-', '')}: ${cnt} runs\n`;
+          });
+          
+          msg += `\n🧠 <b>AI Token Usage:</b>\n`;
+          msg += `<b>By Model:</b>\n`;
+          Object.entries(modelsUsage).forEach(([mdl, usage]) => {
+            msg += `- ${mdl}: ${formatTokens(usage.total)} [In: ${formatTokens(usage.prompt)} | Out: ${formatTokens(usage.candidate)}]\n`;
+          });
+          
+          msg += `\n<b>By Function:</b>\n`;
+          msg += `- Threat Triaging (/fetch-news): ${formatTokens(triagingTokens)} tokens\n`;
+          msg += `- Gemini Assessment: ${formatTokens(assessmentTokens)} tokens\n`;
+          msg += `- Headline Selection: ${formatTokens(headlineTokens)} tokens\n\n`;
+          
+          msg += `📰 <b>Data Processing & Ingress:</b>\n`;
+          msg += `- Total Articles Scanned: ${articlesScanned}\n`;
+          msg += `- Threats Detected: ${threats}\n`;
+          msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n\n`;
+          
+          msg += `<b>Articles By Source:</b>\n`;
+          Object.entries(sourceBreakdown).forEach(([src, cnt]) => {
+            msg += `- ${src}: ${cnt}\n`;
+          });
+          
+          msg += `\n💾 <b>Storage & Infrastructure:</b>\n`;
+          msg += `- Total Database Size: ${dbSize}\n`;
+          msg += `- Active Threat Records: ${incidentRows.toLocaleString()} rows\n`;
+          msg += `- System Logs Retained: ${logRows.toLocaleString()} rows\n`;
+
+          await sendTelegramMessage(chatId, msg);
+        } catch (e: any) {
+          console.error('Error generating resource report:', e);
+          await sendTelegramMessage(chatId, `❌ <b>Failed to generate resource report:</b> ${e.message}`);
         }
       } else if (text.startsWith('/test')) {
         await sendTelegramMessage(chatId, "⏳ <b>Generating test report...</b> This may take a few seconds.");
@@ -179,20 +345,27 @@ export async function POST(request: NextRequest) {
               }
             };
 
-            const ping = async (group: string, name: string, urlStr: string, testFn: () => Promise<string | void>) => {
+            const ping = async (group: string, name: string, urlStr: string, testFn: () => Promise<string | {loc?: string, label?: string} | void>) => {
               const start = Date.now();
               let status = '🔴 ERR';
               let latency = 0;
               let dynamicLoc: string | void = undefined;
+              let resultName = name;
               try {
-                dynamicLoc = await testFn();
+                const res = await testFn();
+                if (typeof res === 'object' && res !== null) {
+                  if (res.loc) dynamicLoc = res.loc;
+                  if (res.label) resultName = res.label;
+                } else if (typeof res === 'string') {
+                  dynamicLoc = res;
+                }
                 latency = Date.now() - start;
                 status = '🟢 OK';
               } catch (e) {
                 latency = Date.now() - start;
               }
               const loc = dynamicLoc ? dynamicLoc : await getLocation(urlStr);
-              return { group, name, status, latency, loc };
+              return { group, name: resultName, status, latency, loc };
             };
 
             const promises = [
@@ -280,6 +453,18 @@ export async function POST(request: NextRequest) {
               }),
               ping('Straits Times RSS', 'Asia', 'https://www.straitstimes.com', async () => {
                 const res = await fetch('https://www.straitstimes.com/news/asia/rss.xml', { method: 'HEAD' });
+                if (!res.ok) throw new Error('Bad status');
+              }),
+              ping('Gov SG Env APIs (Weather Station Data)', 'Wind Speed', 'https://api.data.gov.sg', async () => {
+                const res = await fetch('https://api.data.gov.sg/v1/environment/wind-speed');
+                if (!res.ok) throw new Error('Bad status');
+              }),
+              ping('Gov SG Env APIs (Weather Station Data)', 'Wind Direction', 'https://api.data.gov.sg', async () => {
+                const res = await fetch('https://api.data.gov.sg/v1/environment/wind-direction');
+                if (!res.ok) throw new Error('Bad status');
+              }),
+              ping('Gov SG Env APIs (Weather Station Data)', 'PM 2.5', 'https://api.data.gov.sg', async () => {
+                const res = await fetch('https://api.data.gov.sg/v1/environment/pm25');
                 if (!res.ok) throw new Error('Bad status');
               })
             ];
