@@ -28,12 +28,18 @@ export async function triageNewsArticle(articleText: string): Promise<TriageResu
     const dirData = await dirRes.json();
     
     // Pick the first few stations to give a general sense of the wind
-    const stations = speedData.data.readings.slice(0, 5).map((speedReading: any) => {
-      const dirReading = dirData.data.readings.find((d: any) => d.stationId === speedReading.stationId);
-      return `Station ${speedReading.stationId}: Speed ${speedReading.value} knots, Direction ${dirReading ? dirReading.value : 'unknown'} degrees`;
+    const latestSpeedReadings = speedData.data.readings[0]?.data || [];
+    const latestDirReadings = dirData.data.readings[0]?.data || [];
+
+    const stations = latestSpeedReadings.slice(0, 5).map((speedReading: any) => {
+      const dirReading = latestDirReadings.find((d: any) => d.stationId === speedReading.stationId);
+      // Map station ID to name for better context if possible, or just use ID
+      const stationInfo = speedData.data.stations.find((s: any) => s.id === speedReading.stationId);
+      const stationName = stationInfo ? stationInfo.name : speedReading.stationId;
+      return `Station ${stationName}: Speed ${speedReading.value} knots, Direction ${dirReading ? dirReading.value : 'unknown'} degrees`;
     }).join('\n');
     
-    windContext = `\n\nCURRENT WIND DATA (from api-open.data.gov.sg):\nTimestamp: ${speedData.data.timestamp}\n${stations}\n\nPlease use this wind data to model and project the output for (1) the next 30 mins and (2) next 1 hour, where the threat would likely spread to, providing the actual impacted area via township in Singapore.`;
+    windContext = `\n\nCURRENT WIND DATA (from api-open.data.gov.sg):\nTimestamp: ${speedData.data.readings[0]?.timestamp || speedData.data.timestamp || 'unknown'}\n${stations}\n\nPlease use this wind data to model and project the output for (1) the next 30 mins and (2) next 1 hour, where the threat would likely spread to, providing the actual impacted area via township in Singapore.`;
   } catch (e) {
     console.error('Failed to fetch wind data:', e);
   }
