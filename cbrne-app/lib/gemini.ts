@@ -56,7 +56,12 @@ Return the result strictly as a JSON object with the following fields:
 - "advisory" (string): Provide a highly detailed, actionable advisory based strictly on the threat assessment you just formulated. 
   - State the physical location of the identified source.
   - Identify the substance of the CBRNE threat and its physical properties.
-  - Plume Projection: Using the provided wind data, explicitly state the data and reasoning used for the projection (e.g. wind speed of X knots and wind direction of Y degrees). Then, model and project an output for (1) the next 30 mins and (2) next 1 hour, where would the threat likely spread to, providing the actual impacted area via township.
+  - Plume Projection: You must act as a strict geospatial vector engine. Calculate the direction the plume will travel based on the WIND DIRECTION (where it's blowing FROM) and the SOURCE LOCATION relative to Singapore.
+    - If the wind blows FROM the South, it travels NORTH. A source in Singapore would blow OUT of Singapore into Malaysia.
+    - If the wind blows FROM the North, it travels SOUTH. A source in Malaysia (e.g. Pasir Gudang) would blow INTO Singapore.
+    - Explicitly state the data and reasoning used for the projection (e.g. "Wind is blowing from X degrees at Y knots. This means the plume travels towards Z. Since the source is at [location], this means...").
+    - If the physical math shows the plume will NOT hit Singapore, you MUST state "Based on the wind vector, the plume will travel away from Singapore. No impact is expected."
+    - If it does hit Singapore, model and project an output for (1) the next 30 mins and (2) next 1 hour, providing the actual impacted area via township.
   - Highlight potential impacts to specific Singaporean regions or residents (e.g. Punggol residents) based on the incident details. Analyze the exact risk (e.g., toxicity, flammability, radiation). Clearly state what residents should do if they are INDOORS (e.g., close windows, turn off AC) and what they should do if they are OUTDOORS (e.g., seek shelter, avoid the area). Furthermore, include specific CBRNE medical advice (e.g., decontamination steps like washing with soap and water, symptoms to watch out for, when to seek emergency medical attention, or specific first-aid measures depending on the exact agent). 
   - Use the exact string [BREAK] to separate these points into clear paragraphs (e.g. Source Location & Substance, Plume Projection, Risk, Indoors, Outdoors, Medical Advice). Do not use actual line breaks or newline characters in the JSON string.
 - "lat" (number or null): Latitude of the incident location. Null if unknown.
