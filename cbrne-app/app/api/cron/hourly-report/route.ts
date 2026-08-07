@@ -343,9 +343,9 @@ export async function generateHourlyReport() {
   // Run extracted news through Gemini for CBRNE assessment & top headline selection
   let heartbeatSection = `\n<b>💓 Heartbeat — Top News Pulse:</b>\n`;
   
-  let totalSelectionTokens = 0;
+  let totalSelectionTokens = 0, selectionPromptTokens = 0, selectionCandidateTokens = 0;
   let selectionModel = 'Unknown';
-  let totalAssessmentTokens = 0;
+  let totalAssessmentTokens = 0, assessmentPromptTokens = 0, assessmentCandidateTokens = 0;
   let assessmentModel = 'Unknown';
   
   if (newsApiTopHeadline) {
@@ -456,8 +456,12 @@ ${newsContent}`,
         : ` (${geminiAssessmentResponse.modelUsed})`;
         
       totalSelectionTokens = geminiSelection.usageMetadata?.totalTokenCount || 0;
+      let selectionPromptTokens = geminiSelection.usageMetadata?.promptTokenCount || 0;
+      let selectionCandidateTokens = geminiSelection.usageMetadata?.candidatesTokenCount || 0;
       selectionModel = geminiSelection.modelUsed || 'Unknown';
       totalAssessmentTokens = geminiAssessmentResponse.usageMetadata?.totalTokenCount || 0;
+      let assessmentPromptTokens = geminiAssessmentResponse.usageMetadata?.promptTokenCount || 0;
+      let assessmentCandidateTokens = geminiAssessmentResponse.usageMetadata?.candidatesTokenCount || 0;
       assessmentModel = geminiAssessmentResponse.modelUsed || 'Unknown';
 
       threatSection += heartbeatSection.replace('Top News Pulse:', `Top News Pulse${selectionTokenStr}:`);
@@ -508,8 +512,12 @@ ${computeStatus}
   return {
     ingressBytes,
     totalSelectionTokens,
+    selectionPromptTokens,
+    selectionCandidateTokens,
     selectionModel,
     totalAssessmentTokens,
+    assessmentPromptTokens,
+    assessmentCandidateTokens,
     assessmentModel
   };
 }
@@ -533,7 +541,7 @@ export async function GET(request: Request) {
       try {
         const metrics = await generateHourlyReport();
         
-        const tokenStr = `Tokens Consumed [Headline Selection: ${metrics.totalSelectionTokens} (${metrics.selectionModel}) | Gemini Assessment: ${metrics.totalAssessmentTokens} (${metrics.assessmentModel})]`;
+        const tokenStr = `Tokens Consumed [Headline Selection: ${metrics.totalSelectionTokens} [In: ${metrics.selectionPromptTokens}, Out: ${metrics.selectionCandidateTokens}] (${metrics.selectionModel}) | Gemini Assessment: ${metrics.totalAssessmentTokens} [In: ${metrics.assessmentPromptTokens}, Out: ${metrics.assessmentCandidateTokens}] (${metrics.assessmentModel})]`;
         const bandwidthStr = `Ingress: ${metrics.ingressBytes} bytes`;
         
         await prisma.systemLog.create({

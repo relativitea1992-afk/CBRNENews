@@ -104,7 +104,9 @@ export async function POST(request: NextRequest) {
           const manualRuns: Record<string, number> = {};
           
           let totalTokens = 0, promptTokens = 0, candidateTokens = 0;
-          let triagingTokens = 0, assessmentTokens = 0, headlineTokens = 0;
+          let triagingTokens = { total: 0, prompt: 0, candidate: 0 };
+          let assessmentTokens = { total: 0, prompt: 0, candidate: 0 };
+          let headlineTokens = { total: 0, prompt: 0, candidate: 0 };
           const modelsUsage: Record<string, { total: number, prompt: number, candidate: number }> = {};
           
           let articlesScanned = 0;
@@ -135,16 +137,25 @@ export async function POST(request: NextRequest) {
               if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
 
               // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Models: gemini-1.5-flash
-              const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Models: ([\w.-]+))?/);
+              const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Models: ([\w., -]+))?/);
               if (tokenMatch) {
                 const tot = parseInt(tokenMatch[1]);
                 const prm = parseInt(tokenMatch[2]);
                 const cnd = parseInt(tokenMatch[3]);
-                const mdl = tokenMatch[4] || 'gemini-1.5-flash';
+                const modelString = tokenMatch[4] || 'gemini-1.5-flash';
+                
                 totalTokens += tot; promptTokens += prm; candidateTokens += cnd;
-                triagingTokens += tot;
-                if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
-                modelsUsage[mdl].total += tot; modelsUsage[mdl].prompt += prm; modelsUsage[mdl].candidate += cnd;
+                triagingTokens.total += tot; triagingTokens.prompt += prm; triagingTokens.candidate += cnd;
+                
+                const models = modelString.split(',').map(s => s.trim());
+                for (const mdl of models) {
+                  if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
+                  // We can only attribute total equally or accurately if known. Since fetch-news aggregates,
+                  // we'll just add the total to the first model, or distribute. Let's attribute to the primary model for simplicity if multiple, 
+                  // or just log it all to the first model.
+                  modelsUsage[mdl].total += tot; modelsUsage[mdl].prompt += prm; modelsUsage[mdl].candidate += cnd;
+                  break; // only attribute to the first model in the list to avoid double counting tokens
+                }
               }
             } else if (log.jobName === 'hourly-report') {
               hourlyReportRuns++;
@@ -153,23 +164,29 @@ export async function POST(request: NextRequest) {
               const bandwidthMatch = detail.match(/Ingress: (\d+) bytes/);
               if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
               
-              // Tokens Consumed [Headline Selection: 10 (gemini-x) | Gemini Assessment: 20 (gemini-y)]
-              const selectionMatch = detail.match(/Headline Selection: (\d+) \(([\w.-]+)\)/);
+              // Tokens Consumed [Headline Selection: 10 [In: 5, Out: 5] (gemini-x) | Gemini Assessment: 20 [In: 10, Out: 10] (gemini-y)]
+              const selectionMatch = detail.match(/Headline Selection: (\d+)(?: \[In: (\d+), Out: (\d+)\])? \(([\w.-]+)\)/);
               if (selectionMatch) {
                 const tok = parseInt(selectionMatch[1]);
-                const mdl = selectionMatch[2];
-                totalTokens += tok; headlineTokens += tok;
+                const prm = selectionMatch[2] ? parseInt(selectionMatch[2]) : 0;
+                const cnd = selectionMatch[3] ? parseInt(selectionMatch[3]) : 0;
+                const mdl = selectionMatch[4];
+                totalTokens += tok; promptTokens += prm; candidateTokens += cnd;
+                headlineTokens.total += tok; headlineTokens.prompt += prm; headlineTokens.candidate += cnd;
                 if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
-                modelsUsage[mdl].total += tok;
+                modelsUsage[mdl].total += tok; modelsUsage[mdl].prompt += prm; modelsUsage[mdl].candidate += cnd;
               }
               
-              const assessMatch = detail.match(/Gemini Assessment: (\d+) \(([\w.-]+)\)/);
+              const assessMatch = detail.match(/Gemini Assessment: (\d+)(?: \[In: (\d+), Out: (\d+)\])? \(([\w.-]+)\)/);
               if (assessMatch) {
                 const tok = parseInt(assessMatch[1]);
-                const mdl = assessMatch[2];
-                totalTokens += tok; assessmentTokens += tok;
+                const prm = assessMatch[2] ? parseInt(assessMatch[2]) : 0;
+                const cnd = assessMatch[3] ? parseInt(assessMatch[3]) : 0;
+                const mdl = assessMatch[4];
+                totalTokens += tok; promptTokens += prm; candidateTokens += cnd;
+                assessmentTokens.total += tok; assessmentTokens.prompt += prm; assessmentTokens.candidate += cnd;
                 if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
-                modelsUsage[mdl].total += tok;
+                modelsUsage[mdl].total += tok; modelsUsage[mdl].prompt += prm; modelsUsage[mdl].candidate += cnd;
               }
             } else if (log.jobName === 'purge') {
               purgeRuns++;
@@ -210,9 +227,9 @@ export async function POST(request: NextRequest) {
           });
           
           msg += `\n<b>By Function:</b>\n`;
-          msg += `- Threat Triaging (/fetch-news): ${formatTokens(triagingTokens)} tokens\n`;
-          msg += `- Gemini Assessment: ${formatTokens(assessmentTokens)} tokens\n`;
-          msg += `- Headline Selection: ${formatTokens(headlineTokens)} tokens\n\n`;
+          msg += `- Threat Triaging (/fetch-news): ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
+          msg += `- Gemini Assessment: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
+          msg += `- Headline Selection: ${formatTokens(headlineTokens.total)} tokens [In: ${formatTokens(headlineTokens.prompt)} | Out: ${formatTokens(headlineTokens.candidate)}]\n\n`;
           
           msg += `📰 <b>Data Processing & Ingress:</b>\n`;
           msg += `- Total Articles Scanned: ${articlesScanned}\n`;
