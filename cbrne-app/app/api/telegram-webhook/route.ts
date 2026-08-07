@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
           
           let articlesScanned = 0;
           let ingressBytes = 0;
+          let egressBytes = 0;
           const sourceBreakdown: Record<string, number> = {};
 
           for (const log of logs) {
@@ -135,6 +136,9 @@ export async function POST(request: NextRequest) {
               
               const bandwidthMatch = detail.match(/Ingress: (\d+) bytes/);
               if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
+              
+              const egressMatch = detail.match(/Egress: (\d+) bytes/);
+              if (egressMatch) egressBytes += parseInt(egressMatch[1]);
 
               // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Models: gemini-1.5-flash
               // Also supports old format: via Gemini [gemini-2.0-flash] | Tokens Consumed: 1234 [In: 1000, Out: 234]
@@ -170,6 +174,9 @@ export async function POST(request: NextRequest) {
               
               const bandwidthMatch = detail.match(/Ingress: (\d+) bytes/);
               if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
+              
+              const egressMatch = detail.match(/Egress: (\d+) bytes/);
+              if (egressMatch) egressBytes += parseInt(egressMatch[1]);
               
               // Tokens Consumed [Headline Selection: 10 [In: 5, Out: 5] (gemini-x) | Gemini Assessment: 20 [In: 10, Out: 10] (gemini-y)]
               const selectionMatch = detail.match(/Headline Selection: (\d+)(?: \[In: (\d+), Out: (\d+)\])? \(([\w.-]+)\)/);
@@ -217,9 +224,19 @@ export async function POST(request: NextRequest) {
           const logRows = await prisma.systemLog.count();
 
           const formatTokens = (t: number) => t.toLocaleString();
-          const formatBytes = (b: number) => b > 1048576 ? (b / 1048576).toFixed(2) + ' MB' : (b / 1024).toFixed(2) + ' KB';
+          const formatBytes = (b: number) => {
+            if (b === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(b) / Math.log(k));
+            return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+          };
 
-          let msg = `📊 <b>Resource & Infrastructure Report (Last 24h)</b>\n\n`;
+          const dateOpts = { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' } as Intl.DateTimeFormatOptions;
+          const startStr = oneDayAgo.toLocaleString('en-SG', dateOpts);
+          const endStr = new Date().toLocaleString('en-SG', dateOpts);
+          let msg = `📊 <b>Resource & Infrastructure Report</b>\n`;
+          msg += `<i>Report Window: ${startStr} to ${endStr}</i>\n\n`;
           msg += `🤖 <b>Automated Compute (Cron):</b>\n`;
           msg += `- Threat Scanner (/fetch-news): ${fetchNewsRuns} runs\n`;
           msg += `- System Heartbeat (/hourly-report): ${hourlyReportRuns} runs\n`;
@@ -241,13 +258,14 @@ export async function POST(request: NextRequest) {
           
           msg += `\n<b>By Function:</b>\n`;
           msg += `- Threat Triage & Assessment: ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
-          msg += `- Gemini Gov.sg Assessment: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
+          msg += `- System Heartbeat Analysis: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
           msg += `- Headline Selection: ${formatTokens(headlineTokens.total)} tokens [In: ${formatTokens(headlineTokens.prompt)} | Out: ${formatTokens(headlineTokens.candidate)}]\n\n`;
           
           msg += `📰 <b>Data Processing & Ingress:</b>\n`;
           msg += `- Total Articles Scanned: ${articlesScanned}\n`;
           msg += `- New Threats Detected (24h): ${activeThreats24h}\n`;
-          msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n\n`;
+          msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n`;
+          msg += `- Est. Data Transport (Egress): ~${formatBytes(egressBytes)}\n\n`;
           
           if (Object.keys(sourceBreakdown).length > 0) {
             msg += `<b>Articles By Source:</b>\n`;

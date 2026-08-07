@@ -508,15 +508,22 @@ ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 ${computeStatus}
 
 <i>Report generated automatically.</i>`;
-
+  let egressBytes = 0;
   // 6. Send to Telegram
   if (process.env.TELEGRAM_CHAT_ID) {
+    let telegramPayloadSize = 0;
+    try {
+      const payloadStr = JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: reportMsg });
+      telegramPayloadSize = Buffer.byteLength(payloadStr, 'utf8');
+    } catch(e) {}
     await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID, reportMsg);
+    egressBytes += telegramPayloadSize;
   }
 
   // Return metrics for logging
   return {
     ingressBytes,
+    egressBytes,
     totalSelectionTokens,
     selectionPromptTokens,
     selectionCandidateTokens,
@@ -548,7 +555,7 @@ export async function GET(request: Request) {
         const metrics = await generateHourlyReport();
         
         const tokenStr = `Tokens Consumed [Headline Selection: ${metrics.totalSelectionTokens} [In: ${metrics.selectionPromptTokens}, Out: ${metrics.selectionCandidateTokens}] (${metrics.selectionModel}) | Gemini Assessment: ${metrics.totalAssessmentTokens} [In: ${metrics.assessmentPromptTokens}, Out: ${metrics.assessmentCandidateTokens}] (${metrics.assessmentModel})]`;
-        const bandwidthStr = `Ingress: ${metrics.ingressBytes} bytes`;
+        const bandwidthStr = `Ingress: ${metrics.ingressBytes} bytes | Egress: ${metrics.egressBytes} bytes`;
         
         await prisma.systemLog.create({
           data: {

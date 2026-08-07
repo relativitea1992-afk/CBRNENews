@@ -38,6 +38,7 @@ export async function GET(request: Request) {
   const articlesToProcess: { title: string, content: string, url: string, source: string, publishedAt: Date }[] = [];
 
   let ingressBytes = 0;
+  let egressBytes = 0;
 
   // 1. Fetch from NewsAPI
   try {
@@ -165,8 +166,14 @@ ${linkifyCoordinates(escapeHtml(triage.summary))}
 
 ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.advisory))}\n\n` : ''}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}${tokenConsumptionStr}
 <b>Link:</b> ${escapeHtml(article.url)}`;
-
+        let telegramPayloadSize = 0;
+        try {
+          const payloadStr = JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID!, text: alertMsg });
+          telegramPayloadSize = Buffer.byteLength(payloadStr, 'utf8');
+        } catch(e) {}
+        
         await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
+        egressBytes += telegramPayloadSize;
       } else if (triage && !triage.isRelevant) {
          // Save as irrelevant to avoid reprocessing
          await prisma.incident.create({
@@ -195,7 +202,7 @@ ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.ad
     const tokenStr = (totalPromptTokens > 0 || totalCandidatesTokens > 0) 
       ? ` | Tokens Consumed: ${totalPromptTokens + totalCandidatesTokens} [In: ${totalPromptTokens}, Out: ${totalCandidatesTokens}] | Models: ${modelArray.join(', ')}` 
       : '';
-    const bandwidthStr = ` | Ingress: ${ingressBytes} bytes`;
+    const bandwidthStr = ` | Ingress: ${ingressBytes} bytes | Egress: ${egressBytes} bytes`;
 
     // Log the execution to SystemLog
     await prisma.systemLog.create({
