@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
               details: `Triggered by ${requesterName} (IP: ${telegramIp})`
             }
           });
+          manualLogId = log.id;
         } catch (e) {
           console.error('Failed to log manual command:', e);
         }
