@@ -330,11 +330,37 @@ export async function POST(request: NextRequest) {
           
           msg += `\n💾 <b>Storage & Compute Infrastructure:</b>\n`;
           
+          let manualDur = 0, manualMem = 0, manualCold = 0, manualWarm = 0, manualRunsTotal = 0;
+          let autoDur = 0, autoMem = 0, autoCold = 0, autoWarm = 0, autoRuns = 0;
+
           for (const [job, stats] of Object.entries(computeStats)) {
-            msg += `<b>Cron/Job (${job}):</b>\n`;
-            msg += `- Avg Duration: ${(stats.totalDuration / stats.runs / 1000).toFixed(1)}s\n`;
-            msg += `- Peak RAM: ${stats.maxMemory} MB\n`;
-            msg += `- Starts: ${stats.coldStarts} Cold, ${stats.warmStarts} Warm\n`;
+            if (job.startsWith('manual-')) {
+               manualDur += stats.totalDuration;
+               manualMem = Math.max(manualMem, stats.maxMemory);
+               manualCold += stats.coldStarts;
+               manualWarm += stats.warmStarts;
+               manualRunsTotal += stats.runs;
+            } else {
+               autoDur += stats.totalDuration;
+               autoMem = Math.max(autoMem, stats.maxMemory);
+               autoCold += stats.coldStarts;
+               autoWarm += stats.warmStarts;
+               autoRuns += stats.runs;
+            }
+          }
+
+          if (manualRunsTotal > 0) {
+            msg += `<b>Manual Interactions (Vercel Compute):</b>\n`;
+            msg += `- Avg Duration: ${(manualDur / manualRunsTotal / 1000).toFixed(1)}s\n`;
+            msg += `- Peak RAM: ${manualMem} MB\n`;
+            msg += `- Starts: ${manualCold} Cold, ${manualWarm} Warm\n`;
+          }
+
+          if (autoRuns > 0) {
+            msg += `<b>Automatic Workflows (Vercel Compute):</b>\n`;
+            msg += `- Avg Duration: ${(autoDur / autoRuns / 1000).toFixed(1)}s\n`;
+            msg += `- Peak RAM: ${autoMem} MB\n`;
+            msg += `- Starts: ${autoCold} Cold, ${autoWarm} Warm\n`;
           }
 
           msg += `<b>Database:</b>\n`;
