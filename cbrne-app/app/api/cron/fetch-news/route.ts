@@ -103,6 +103,40 @@ export async function GET(request: Request) {
     await prisma.systemLog.create({ data: { jobName: 'fetch-news-error', status: 'ERROR', details: `CNA Master Error: ${err.message}` }});
   }
 
+  // 3. Fetch from Straits Times RSS
+  try {
+    const stFeeds = [
+      'https://www.straitstimes.com/news/singapore/rss.xml',
+      'https://www.straitstimes.com/news/world/rss.xml',
+      'https://www.straitstimes.com/news/asia/rss.xml'
+    ];
+
+    for (const feedUrl of stFeeds) {
+      try {
+        const res = await fetch(feedUrl);
+        const xml = await res.text();
+        ingressBytes += Buffer.byteLength(xml, 'utf8');
+        const feed = await parser.parseString(xml);
+        // Take top 10 from each category to avoid overloading
+        feed.items.slice(0, 10).forEach(item => {
+          articlesToProcess.push({
+            title: item.title || '',
+            content: item.contentSnippet || item.content || '',
+            url: item.link || '',
+            source: 'ST RSS',
+            publishedAt: new Date(item.pubDate || Date.now())
+          });
+        });
+      } catch (e: any) {
+        console.error('Error fetching ST feed:', feedUrl, e);
+        await prisma.systemLog.create({ data: { jobName: 'fetch-news-error', status: 'ERROR', details: `ST Feed Error (${feedUrl}): ${e.message}` }});
+      }
+    }
+  } catch (err: any) {
+    console.error('Error fetching ST RSS:', err);
+    await prisma.systemLog.create({ data: { jobName: 'fetch-news-error', status: 'ERROR', details: `ST Master Error: ${err.message}` }});
+  }
+
   let processedCount = 0;
   let threatCount = 0;
   const sourceCounts: Record<string, number> = {};
