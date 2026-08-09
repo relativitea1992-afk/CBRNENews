@@ -256,12 +256,12 @@ export async function generateHourlyReport() {
     const [speedData, dirData, pm25Data] = envDataPromise;
 
     const extractStationStatus = (data: any, expectedTotal: number = 17) => {
-      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: expectedTotal, active: 0, missing: [] };
+      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: expectedTotal, active: 0, missing: ['ALL (API data unavailable)'] };
       const stations = data.data.stations;
       const readings = data.data.readings;
       const total = Math.max(stations.length, expectedTotal);
       
-      if (readings.length === 0) return { total, active: 0, missing: stations.map((s: any) => s.name) };
+      if (readings.length === 0) return { total, active: 0, missing: ['ALL since start of day'] };
 
       const latestReading = readings[readings.length - 1];
       const readingData = latestReading?.data || [];
@@ -292,7 +292,7 @@ export async function generateHourlyReport() {
     };
     
     const extractPm25Status = (data: any) => {
-      if (!data || !data.data || !data.data.items || data.data.items.length === 0) return { total: 5, active: 0, missing: ['all'] };
+      if (!data || !data.data || !data.data.items || data.data.items.length === 0) return { total: 5, active: 0, missing: ['ALL (API data unavailable)'] };
       const items = data.data.items;
       const latestReading = items[items.length - 1];
       const keys = Object.keys(latestReading?.readings?.pm25_one_hourly || {});

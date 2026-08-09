@@ -101,7 +101,7 @@ ${articleText}
     let closestStation: any = null;
     let minDistance = Infinity;
 
-    const stations = speedData.data.stations || [];
+    const stations = speedData.data?.stations || [];
     for (const st of stations) {
       if (st.location && st.location.latitude && st.location.longitude) {
         const dist = getDistance(result1.lat, result1.lng, st.location.latitude, st.location.longitude);
@@ -113,16 +113,16 @@ ${articleText}
     }
 
     if (closestStation) {
-      const readingsLen = speedData.data.readings?.length || 1;
+      const readingsLen = speedData.data?.readings?.length || 1;
       const latestIdx = readingsLen - 1;
       const historicalIdx = Math.max(0, readingsLen - 13);
       
-      const latestSpeedReadings = speedData.data.readings?.[latestIdx]?.data || [];
-      const latestDirReadings = dirData.data.readings?.[latestIdx]?.data || [];
-      const historicalSpeedReadings = speedData.data.readings?.[historicalIdx]?.data || [];
-      const historicalDirReadings = dirData.data.readings?.[historicalIdx]?.data || [];
-      const latestTimestamp = speedData.data.readings?.[latestIdx]?.timestamp || speedData.data.timestamp || 'unknown';
-      const historicalTimestamp = speedData.data.readings?.[historicalIdx]?.timestamp || 'unknown';
+      const latestSpeedReadings = speedData.data?.readings?.[latestIdx]?.data || [];
+      const historicalSpeedReadings = speedData.data?.readings?.[historicalIdx]?.data || [];
+      const latestDirReadings = dirData.data?.readings?.[latestIdx]?.data || [];
+      const historicalDirReadings = dirData.data?.readings?.[historicalIdx]?.data || [];
+      const latestTimestamp = speedData.data?.readings?.[latestIdx]?.timestamp || speedData.data?.timestamp || 'unknown';
+      const historicalTimestamp = speedData.data?.readings?.[historicalIdx]?.timestamp || 'unknown';
 
       const processSingleStation = (stationId: string, stationInfo: any, speedReadings: any[], dirReadings: any[]) => {
         const speedReading = speedReadings.find((s: any) => s.stationId === stationId);
