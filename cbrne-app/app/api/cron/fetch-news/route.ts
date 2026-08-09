@@ -93,12 +93,14 @@ export async function GET(request: Request) {
             publishedAt: new Date(item.pubDate || Date.now())
           });
         });
-      } catch (e) {
+      } catch (e: any) {
         console.error('Error fetching CNA feed:', feedUrl, e);
+        await prisma.systemLog.create({ data: { jobName: 'fetch-news-error', status: 'ERROR', details: `CNA Feed Error (${feedUrl}): ${e.message}` }});
       }
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error fetching CNA RSS:', err);
+    await prisma.systemLog.create({ data: { jobName: 'fetch-news-error', status: 'ERROR', details: `CNA Master Error: ${err.message}` }});
   }
 
   let processedCount = 0;
@@ -128,26 +130,28 @@ export async function GET(request: Request) {
         totalCandidatesTokens += triage.usageMetadata.candidatesTokenCount || 0;
       }
 
-      if (triage && triage.isRelevant) {
-        threatCount++;
-        
-        // Save to DB
+      if (triage) {
+        // Save to DB (both threats and non-threats) to prevent reprocessing them next hour
         await prisma.incident.create({
           data: {
-            headline: triage.headline,
-            summary: triage.summary,
+            headline: triage.headline || article.title,
+            summary: triage.summary || 'No relevant threats detected.',
             sourceUrl: article.url,
             sourceName: article.source,
             publishedAt: article.publishedAt,
             lat: triage.lat,
             lng: triage.lng,
-            type: triage.type,
+            type: triage.type || 'Unknown',
             advisory: triage.advisory,
             modelUsed: triage.modelUsed || 'Unknown',
-            isRelevant: true,
+            isRelevant: triage.isRelevant || false,
           }
         });
+      }
 
+      if (triage && triage.isRelevant) {
+        threatCount++;
+        
         const tokenConsumptionStr = triage.usageMetadata 
           ? `\n<b>Tokens Consumed:</b> ${triage.usageMetadata.totalTokenCount} [In: ${triage.usageMetadata.promptTokenCount}, Out: ${triage.usageMetadata.candidatesTokenCount}]`
           : '';
