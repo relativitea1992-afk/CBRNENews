@@ -97,7 +97,9 @@ export async function generateHourlyReport() {
       const latency = Date.now() - start;
       if (res.ok) {
         newsApiStatus = `✅ ONLINE (${latency}ms)`;
-        const data = await res.json();
+        const text = await res.text();
+        ingressBytes += Buffer.byteLength(text, 'utf8');
+        const data = JSON.parse(text);
         if (data.articles?.length > 0) {
           // Pre-filter: only include articles with potential CBRNE/haze/SG relevance
           for (const article of data.articles) {
@@ -143,6 +145,7 @@ export async function generateHourlyReport() {
         cnaSuccessCount++;
         totalCnaLatency += latency;
         const xml = await res.text();
+        ingressBytes += Buffer.byteLength(xml, 'utf8');
         const titleMatch = xml.match(/<item[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
         if (titleMatch) {
           const title = titleMatch[1].replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
