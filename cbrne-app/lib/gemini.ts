@@ -282,8 +282,9 @@ OR
 `;
 
   try {
-    const responseText = await geminiGenerate(prompt, 'gemini-3.5-flash-lite');
-    const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const response = await geminiGenerate({ contents: prompt, config: { responseMimeType: 'application/json' } });
+    if (!response || !response.text) return null;
+    const cleaned = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
     const result = JSON.parse(cleaned);
     
     if (result.isSameEvent && result.clusterId) {
