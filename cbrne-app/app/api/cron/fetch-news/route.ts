@@ -145,7 +145,8 @@ export async function GET(request: Request) {
   after(async () => {
     try {
       let totalPromptTokens = 0;
-    let totalCandidatesTokens = 0;
+      let totalCandidatesTokens = 0;
+      let totalWordCount = 0;
 
     for (const article of articlesToProcess) {
       if (!article.url || !article.title) continue;
@@ -155,6 +156,10 @@ export async function GET(request: Request) {
       if (existing) continue;
 
       const triage = await triageNewsArticle(`Title: ${article.title}\n\nContent: ${article.content}`);
+      
+      const wordsInArticle = (article.title?.split(/\s+/).length || 0) + (article.content?.split(/\s+/).length || 0);
+      totalWordCount += wordsInArticle;
+
       processedCount++;
       sourceCounts[article.source] = (sourceCounts[article.source] || 0) + 1;
       if (triage && triage.modelUsed) {
@@ -268,7 +273,7 @@ ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.ad
         data: {
           jobName: 'fetch-news',
           status: 'SUCCESS',
-          details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}${bandwidthStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
+          details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}${bandwidthStr} | Words: ${totalWordCount}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
         }
       });
     } catch (error: any) {

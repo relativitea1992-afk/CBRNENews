@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
           const modelsUsage: Record<string, { total: number, prompt: number, candidate: number }> = {};
           
           let articlesScanned = 0;
+          let totalWordCount = 0;
           let ingressBytes = 0;
           let egressBytes = 0;
           const sourceBreakdown: Record<string, number> = {};
@@ -127,6 +128,9 @@ export async function POST(request: NextRequest) {
               
               const egressMatch = detail.match(/Egress: (\d+) bytes/);
               if (egressMatch) egressBytes += parseInt(egressMatch[1]);
+
+              const wordsMatch = detail.match(/Words: (\d+)/);
+              if (wordsMatch) totalWordCount += parseInt(wordsMatch[1]);
 
               // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Models: gemini-1.5-flash
               const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Models: ([\w., -]+))?/);
@@ -279,17 +283,16 @@ export async function POST(request: NextRequest) {
           msg += `- Headline Selection: ${formatTokens(headlineTokens.total)} tokens [In: ${formatTokens(headlineTokens.prompt)} | Out: ${formatTokens(headlineTokens.candidate)}]\n\n`;
           
           msg += `📰 <b>Data Processing & Ingress:</b>\n`;
-          msg += `- Total Articles Scanned: ${articlesScanned}\n`;
-          msg += `- New Threats Detected (${days}d): ${activeThreats}\n`;
+          let sourceBreakdownStr = '';
+          if (Object.keys(sourceBreakdown).length > 0) {
+            sourceBreakdownStr = ` (${Object.entries(sourceBreakdown).map(([src, cnt]) => `${cnt} ${src}`).join(', ')})`;
+          }
+          msg += `- Total Articles Scanned: ${articlesScanned}${sourceBreakdownStr}\n`;
+          if (totalWordCount > 0) {
+            msg += `- Total Words Analyzed: ~${totalWordCount.toLocaleString()} words\n`;
+          }
           msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n`;
           msg += `- Est. Data Transport (Egress): ~${formatBytes(egressBytes)}\n\n`;
-          
-          if (Object.keys(sourceBreakdown).length > 0) {
-            msg += `<b>Articles By Source:</b>\n`;
-            Object.entries(sourceBreakdown).forEach(([src, cnt]) => {
-              msg += `- ${src}: ${cnt}\n`;
-            });
-          }
           
           msg += `\n🎯 <b>Threat Intelligence:</b>\n`;
           msg += `- Threats Detected: ${relevantSavedIncidents}\n`;
