@@ -244,7 +244,7 @@ export async function clusterIncident(
   newSummary: string,
   newType: string,
   recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
-): Promise<string | null> {
+): Promise<{ clusterId: string | null, usageMetadata?: any } | null> {
   if (!process.env.GEMINI_API_KEY) return null;
   
   // Filter incidents to match the exact same type as a basic heuristic
@@ -288,8 +288,9 @@ OR
     const result = JSON.parse(cleaned);
     
     if (result.isSameEvent && result.clusterId) {
-      return result.clusterId;
+       return { clusterId: result.clusterId, usageMetadata: response.usageMetadata };
     }
+    return { clusterId: null, usageMetadata: response.usageMetadata };
   } catch (error) {
     console.error('Error clustering incident with Gemini:', error);
   }

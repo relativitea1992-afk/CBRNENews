@@ -181,14 +181,18 @@ export async function GET(request: Request) {
         });
 
         if (recentActiveThreats.length > 0) {
-           const matchedClusterId = await clusterIncident(
+           const clusterResult = await clusterIncident(
              triage.headline || article.title,
              triage.summary || '',
              triage.type || 'Unknown',
              recentActiveThreats.map(t => ({ id: t.id, clusterId: t.clusterId, headline: t.headline, summary: t.summary, type: t.type }))
            );
-           if (matchedClusterId) {
-             clusterId = matchedClusterId;
+           if (clusterResult) {
+             if (clusterResult.clusterId) clusterId = clusterResult.clusterId;
+             if (clusterResult.usageMetadata) {
+               totalPromptTokens += clusterResult.usageMetadata.promptTokenCount || 0;
+               totalCandidatesTokens += clusterResult.usageMetadata.candidatesTokenCount || 0;
+             }
            }
         }
       }
