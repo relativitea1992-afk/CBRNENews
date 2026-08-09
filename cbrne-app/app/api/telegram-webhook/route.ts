@@ -101,11 +101,21 @@ export async function POST(request: NextRequest) {
           let egressBytes = 0;
           const sourceBreakdown: Record<string, number> = {};
 
+          let totalFetchDuration = 0;
+          let maxFetchMemory = 0;
+          let fetchColdStarts = 0;
+          let fetchWarmStarts = 0;
+
+          let totalHourlyDuration = 0;
+          let maxHourlyMemory = 0;
+          let hourlyColdStarts = 0;
+          let hourlyWarmStarts = 0;
+
           for (const log of logs) {
+            const detail = log.details || '';
             if (log.jobName === 'fetch-news') {
               fetchNewsRuns++;
               
-              const detail = log.details || '';
               // Verified: Total 50 new articles (Singapore: 20, World: 15, Asia: 15)
               const articlesMatch = detail.match(/Total (\d+) new articles/);
               if (articlesMatch) articlesScanned += parseInt(articlesMatch[1]);
@@ -161,7 +171,6 @@ export async function POST(request: NextRequest) {
               }
             } else if (log.jobName === 'hourly-report') {
               hourlyReportRuns++;
-              const detail = log.details || '';
               
               const bandwidthMatch = detail.match(/Ingress: (\d+) bytes/);
               if (bandwidthMatch) ingressBytes += parseInt(bandwidthMatch[1]);
@@ -196,9 +205,25 @@ export async function POST(request: NextRequest) {
               purgeRuns++;
             } else if (log.jobName.startsWith('manual-')) {
               manualRuns[log.jobName] = (manualRuns[log.jobName] || 0) + 1;
-              const detail = log.details || '';
               const egressMatch = detail.match(/Egress: (\d+) bytes/);
               if (egressMatch) egressBytes += parseInt(egressMatch[1]);
+            }
+            
+            const computeMatch = detail.match(/Compute: (\d+)ms, (\d+)MB RAM, (Cold|Warm) Start/);
+            if (computeMatch) {
+              const dur = parseInt(computeMatch[1]);
+              const mem = parseInt(computeMatch[2]);
+              const isCold = computeMatch[3] === 'Cold';
+              
+              if (log.jobName === 'fetch-news') {
+                 totalFetchDuration += dur;
+                 if (mem > maxFetchMemory) maxFetchMemory = mem;
+                 isCold ? fetchColdStarts++ : fetchWarmStarts++;
+              } else if (log.jobName === 'hourly-report') {
+                 totalHourlyDuration += dur;
+                 if (mem > maxHourlyMemory) maxHourlyMemory = mem;
+                 isCold ? hourlyColdStarts++ : hourlyWarmStarts++;
+              }
             }
           }
 
@@ -298,8 +323,21 @@ export async function POST(request: NextRequest) {
           msg += `- Typology Breakdown: ${threatTypes}\n`;
           msg += `- Hotspots: ${sgHotspots} inside SG, ${crossBorderHotspots} cross-border\n`;
           
-          msg += `\n💾 <b>Storage & Infrastructure:</b>\n`;
-          msg += `- Total Database Size: ${dbSize}\n`;
+          msg += `\n💾 <b>Storage & Compute Infrastructure:</b>\n`;
+          if (fetchNewsRuns > 0) {
+            msg += `<b>Cron (fetch-news):</b>\n`;
+            msg += `- Avg Duration: ${(totalFetchDuration / fetchNewsRuns / 1000).toFixed(1)}s\n`;
+            msg += `- Peak RAM: ${maxFetchMemory} MB\n`;
+            msg += `- Starts: ${fetchColdStarts} Cold, ${fetchWarmStarts} Warm\n`;
+          }
+          if (hourlyReportRuns > 0) {
+            msg += `<b>Cron (hourly-report):</b>\n`;
+            msg += `- Avg Duration: ${(totalHourlyDuration / hourlyReportRuns / 1000).toFixed(1)}s\n`;
+            msg += `- Peak RAM: ${maxHourlyMemory} MB\n`;
+            msg += `- Starts: ${hourlyColdStarts} Cold, ${hourlyWarmStarts} Warm\n`;
+          }
+          msg += `<b>Database:</b>\n`;
+          msg += `- Total Size: ${dbSize}\n`;
           msg += `- Active Threats (Last ${days}d): ${activeThreats} rows\n`;
           msg += `- Total Analyzed URLs (All Time): ${allIncidentRows.toLocaleString()} rows\n`;
           msg += `- System Logs Retained: ${logRows.toLocaleString()} rows\n`;

@@ -26,7 +26,13 @@ function linkifyCoordinates(text: string) {
 
 export const maxDuration = 300; // Allow up to 5 minutes for AI processing
 
+let isFetchColdStart = true;
+
 export async function GET(request: Request) {
+  const startTime = Date.now();
+  const isCold = isFetchColdStart;
+  isFetchColdStart = false;
+
   const authHeader = request.headers.get('authorization');
   const url = new URL(request.url);
   const secretParam = url.searchParams.get('secret');
@@ -271,13 +277,16 @@ ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.ad
       ? ` | Tokens Consumed: ${totalPromptTokens + totalCandidatesTokens} [In: ${totalPromptTokens}, Out: ${totalCandidatesTokens}] | Models: ${modelArray.join(', ')}` 
       : '';
     const bandwidthStr = ` | Ingress: ${ingressBytes} bytes | Egress: ${egressBytes} bytes`;
+    const duration = Date.now() - startTime;
+    const memUsage = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    const computeStr = ` | Compute: ${duration}ms, ${memUsage}MB RAM, ${isCold ? 'Cold' : 'Warm'} Start`;
 
       // Log the execution to SystemLog
       await prisma.systemLog.create({
         data: {
           jobName: 'fetch-news',
           status: 'SUCCESS',
-          details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}${bandwidthStr} | Words: ${totalWordCount}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
+          details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}${bandwidthStr}${computeStr} | Words: ${totalWordCount}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
         }
       });
     } catch (error: any) {

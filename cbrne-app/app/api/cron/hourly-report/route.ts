@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { sendTelegramMessage } from '@/lib/telegram';
 import { geminiGenerate, checkAllModels } from '@/lib/gemini-client';
 
-export const maxDuration = 60; // 1 minute max duration
+export const maxDuration = 300; // Allow up to 5 minutes for AI processing
 export const preferredRegion = 'sin1';
 
 export async function generateHourlyReport() {
@@ -62,6 +62,7 @@ export async function generateHourlyReport() {
       outcome = escapeHtml(outcome);
       outcome = outcome.replace(/ via /g, '\nProcessed via ')
                        .replace(/ \| Tokens Consumed:/g, '\nTokens Consumed:')
+                       .replace(/ \| Words: \d+/g, '')
                        .replace(/\. Found/g, '.\nFound')
                        .replace(/\. No relevant threats/g, '.\nNo relevant threats')
                        .replace(/\. Threats detected!/g, '.\nThreats detected!');
@@ -636,9 +637,15 @@ ${computeStatus}
   };
 }
 
+let isHourlyColdStart = true;
+
 import { after } from 'next/server';
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
+  const isCold = isHourlyColdStart;
+  isHourlyColdStart = false;
+
   // 1. Verify Cron Secret
   const authHeader = request.headers.get('authorization');
   const url = new URL(request.url);
@@ -654,15 +661,19 @@ export async function GET(request: Request) {
     after(async () => {
       try {
         const metrics = await generateHourlyReport();
+        const memoryMB = Math.round(process.memoryUsage().rss / 1024 / 1024);
         
         const tokenStr = `Tokens Consumed [Headline Selection: ${metrics.totalSelectionTokens} [In: ${metrics.selectionPromptTokens}, Out: ${metrics.selectionCandidateTokens}] (${metrics.selectionModel}) | Gemini Assessment: ${metrics.totalAssessmentTokens} [In: ${metrics.assessmentPromptTokens}, Out: ${metrics.assessmentCandidateTokens}] (${metrics.assessmentModel})]`;
         const bandwidthStr = `Ingress: ${metrics.ingressBytes} bytes | Egress: ${metrics.egressBytes} bytes`;
+        
+        const duration = Date.now() - startTime;
+        const computeStr = `\nCompute: ${duration}ms, ${memoryMB}MB RAM, ${isCold ? 'Cold' : 'Warm'} Start`;
         
         await prisma.systemLog.create({
           data: {
             jobName: 'hourly-report',
             status: 'SUCCESS',
-            details: `Heartbeat sent successfully. ${tokenStr} | ${bandwidthStr}`
+            details: `Heartbeat sent successfully. ${tokenStr} | ${bandwidthStr} ${computeStr}`
           }
         });
         
