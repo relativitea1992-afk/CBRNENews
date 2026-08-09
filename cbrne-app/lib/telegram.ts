@@ -1,4 +1,4 @@
-export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null, type?: string | null }) {
+export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null, type?: string | null, reply_markup?: any }) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     console.error('TELEGRAM_BOT_TOKEN is missing');
@@ -72,14 +72,18 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
     }
 
     // Send the detailed text message (allows up to 4096 chars)
+    const messageBody: any = {
+      chat_id: chatId,
+      text: finalMessage,
+      parse_mode: 'HTML',
+    };
+    if (options?.reply_markup) {
+      messageBody.reply_markup = options.reply_markup;
+    }
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: finalMessage,
-        parse_mode: 'HTML',
-      }),
+      body: JSON.stringify(messageBody),
     });
     
     if (!response.ok) {
