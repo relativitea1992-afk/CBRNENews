@@ -109,7 +109,8 @@ export async function GET(request: Request) {
   const modelsUsed = new Set<string>();
 
   after(async () => {
-    let totalPromptTokens = 0;
+    try {
+      let totalPromptTokens = 0;
     let totalCandidatesTokens = 0;
 
     for (const article of articlesToProcess) {
@@ -178,18 +179,6 @@ ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.ad
         
         await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
         egressBytes += telegramPayloadSize;
-      } else if (triage && !triage.isRelevant) {
-         // Save as irrelevant to avoid reprocessing
-         await prisma.incident.create({
-          data: {
-            headline: article.title.substring(0, 200),
-            summary: "Irrelevant",
-            sourceUrl: article.url,
-            sourceName: article.source,
-            publishedAt: article.publishedAt,
-            isRelevant: false,
-          }
-        });
       }
     }
 
@@ -208,14 +197,24 @@ ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.ad
       : '';
     const bandwidthStr = ` | Ingress: ${ingressBytes} bytes | Egress: ${egressBytes} bytes`;
 
-    // Log the execution to SystemLog
-    await prisma.systemLog.create({
-      data: {
-        jobName: 'fetch-news',
-        status: 'SUCCESS',
-        details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}${bandwidthStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
-      }
-    });
+      // Log the execution to SystemLog
+      await prisma.systemLog.create({
+        data: {
+          jobName: 'fetch-news',
+          status: 'SUCCESS',
+          details: `Verified: Total ${processedCount} new articles (${breakdownStr})${modelsStr}${tokenStr}${bandwidthStr}. ${threatCount === 0 ? 'No relevant threats detected.' : `Found ${threatCount} relevant threats.`}`
+        }
+      });
+    } catch (error: any) {
+      console.error('Background fetch-news error:', error);
+      await prisma.systemLog.create({
+        data: {
+          jobName: 'fetch-news',
+          status: 'ERROR',
+          details: `Background processing failed: ${error.message || String(error)}`
+        }
+      });
+    }
   });
 
   return NextResponse.json({ success: true, message: 'Processing in background' });
