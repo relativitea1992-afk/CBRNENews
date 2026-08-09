@@ -414,7 +414,8 @@ export async function generateHourlyReport() {
       
       clusterTimelineContext += `\n[Threat Event: ${incidents[0].type}]\n`;
       incidents.forEach(i => {
-         clusterTimelineContext += `- [${i.publishedAt.toISOString()}] ${i.headline}\n`;
+         const timelineTimeStr = new Date(i.publishedAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+         clusterTimelineContext += `- [${timelineTimeStr}] ${i.headline}\n`;
       });
       
       count++;
@@ -481,7 +482,7 @@ ${newsContent}`,
         geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds, as well as timelines of ongoing active threat events.
-Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles.
+Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles. Ensure all dates/times mentioned in the timeline are in a clear, human-readable format (e.g. "Aug 9, 12:55 PM"). Do not output raw UTC timestamps.
 Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
 Task 3: Provide an actionable advisory based strictly on the assessment (or "None").
 
