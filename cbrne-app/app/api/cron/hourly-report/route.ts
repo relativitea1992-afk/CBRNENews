@@ -606,9 +606,6 @@ ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 <b>Gov sg Env APIs:</b> ${govSgStatus}
 <b>Supabase Link:</b> ${supabaseStatus}
 
-<b>Vercel Compute</b>
-${computeStatus}
-
 <i>Report generated automatically.</i>`;
   let egressBytes = 0;
   // 6. Send to Telegram
