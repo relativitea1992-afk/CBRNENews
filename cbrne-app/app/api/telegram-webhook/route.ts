@@ -207,6 +207,9 @@ export async function POST(request: NextRequest) {
           }
           
           const allIncidentRows = await prisma.incident.count();
+          const activeThreats = await prisma.incident.count({
+            where: { isRelevant: true, createdAt: { gte: pastDate } }
+          });
           const logRows = await prisma.systemLog.count();
 
           // 1. Relevance / Noise Ratio
@@ -293,10 +296,11 @@ export async function POST(request: NextRequest) {
           msg += `- Typology Breakdown: ${threatTypes}\n`;
           msg += `- Hotspots: ${sgHotspots} inside SG, ${crossBorderHotspots} cross-border\n`;
           
-          msg += `\n💽 <b>Database Health:</b>\n`;
-          msg += `- Incident Rows: ${allIncidentRows.toLocaleString()}\n`;
-          msg += `- SystemLog Rows: ${logRows.toLocaleString()}\n`;
-          msg += `- Storage Size: ${dbSize}\n`;
+          msg += `\n💾 <b>Storage & Infrastructure:</b>\n`;
+          msg += `- Total Database Size: ${dbSize}\n`;
+          msg += `- Active Threats (Last ${days}d): ${activeThreats} rows\n`;
+          msg += `- Total Analyzed URLs (All Time): ${allIncidentRows.toLocaleString()} rows\n`;
+          msg += `- System Logs Retained: ${logRows.toLocaleString()} rows\n`;
 
           await sendTrackedMessage(chatId, msg);
         } catch (e: any) {
