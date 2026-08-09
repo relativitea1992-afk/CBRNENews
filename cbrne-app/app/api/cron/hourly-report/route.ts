@@ -71,6 +71,8 @@ export async function generateHourlyReport() {
     newsStatusMsg = checkedLines.trim();
   }
 
+  let ingressBytes = 0;
+
   // 2. Check ALL Gemini models individually
   const modelStatuses = await checkAllModels();
   let geminiStatusSection = '';
@@ -188,8 +190,6 @@ export async function generateHourlyReport() {
 
   let stSuccessCount = 0;
   let totalStLatency = 0;
-
-  let ingressBytes = 0;
 
   await Promise.all(stFeeds.map(async (feed) => {
     try {
