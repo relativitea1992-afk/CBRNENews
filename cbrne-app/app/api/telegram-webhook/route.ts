@@ -288,9 +288,6 @@ export async function POST(request: NextRequest) {
             sourceBreakdownStr = ` (${Object.entries(sourceBreakdown).map(([src, cnt]) => `${cnt} ${src}`).join(', ')})`;
           }
           msg += `- Total Articles Scanned: ${articlesScanned}${sourceBreakdownStr}\n`;
-          if (totalWordCount > 0) {
-            msg += `- Total Words Analyzed: ~${totalWordCount.toLocaleString()} words\n`;
-          }
           msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n`;
           msg += `- Est. Data Transport (Egress): ~${formatBytes(egressBytes)}\n\n`;
           
