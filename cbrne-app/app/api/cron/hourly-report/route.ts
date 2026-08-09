@@ -371,7 +371,8 @@ export async function generateHourlyReport() {
   if (recentThreats.length > 0) {
     threatSection = `\n<b>🚨 Threats Detected (Past 24hr):</b> ${recentThreats.length}\n`;
     for (const t of recentThreats.slice(0, 3)) {
-      threatSection += `• <b>[${t.type}]</b> ${t.headline}\n`;
+      const timeStr = new Date(t.publishedAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+      threatSection += `• [${timeStr}] <b>[${t.type}]</b> ${t.headline}\n`;
     }
     if (recentThreats.length > 3) {
       threatSection += `<i>...and ${recentThreats.length - 3} more</i>\n`;
@@ -380,7 +381,8 @@ export async function generateHourlyReport() {
     // Show live PM2.5 readings if any haze/air quality threat is active
     const hasHazeThreat = recentThreats.some(t => /haze|air quality/i.test(t.type || ''));
     if (hasHazeThreat && Object.keys(pm25Readings).length > 0) {
-      threatSection += `\n🌫️ <b>Live PM2.5 Readings (1-hour):</b>\n`;
+      const liveTimeStr = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+      threatSection += `\n🌫️ <b>Live PM2.5 Readings (${liveTimeStr}):</b>\n`;
       const regions = ['north', 'south', 'east', 'west', 'central'];
       const row1 = regions.slice(0, 3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
       const row2 = regions.slice(3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
