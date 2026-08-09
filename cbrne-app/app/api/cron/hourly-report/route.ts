@@ -37,6 +37,26 @@ export async function generateHourlyReport() {
       outcome = outcome.replace(/ \| Models: .*? \| Ingress: \d+ bytes/g, '');
       outcome = outcome.replace(/ \| Models: [^|]+/g, '');
       outcome = outcome.replace(/ \| Ingress: \d+ bytes/g, '');
+      outcome = outcome.replace(/ \| Egress: \d+ bytes/g, '');
+
+      // Consolidate individual source names under "NewsAPI"
+      outcome = outcome.replace(/\(([^)]+)\)/, (match: string, inner: string) => {
+        if (inner.includes(':')) {
+          // Parse source breakdown and consolidate non-CNA/ST under NewsAPI
+          const parts = inner.split(', ');
+          const consolidated: Record<string, number> = {};
+          for (const part of parts) {
+            const [src, count] = part.split(': ');
+            if (src && count) {
+              const key = (src === 'CNA' || src === 'ST') ? src : 'NewsAPI';
+              consolidated[key] = (consolidated[key] || 0) + parseInt(count);
+            }
+          }
+          const result = Object.entries(consolidated).map(([s, c]) => `${s}: ${c}`).join(', ');
+          return `(${result})`;
+        }
+        return match;
+      });
 
       // Escape raw text first
       outcome = escapeHtml(outcome);
@@ -65,23 +85,27 @@ export async function generateHourlyReport() {
     }
   }
 
-  // 3. Check NewsAPI Linkage + extract top headline and content
+  // 3. Check NewsAPI Linkage + extract multiple articles with pre-filter
   let newsApiStatus = 'Unknown';
-  let newsApiTopHeadline = '';
   let newsApiTopContent = '';
+  const RELEVANCE_KEYWORDS = /singapore|johor|batam|southeast asia|cbrne|chemical|biological|radiological|nuclear|explosive|haze|air quality|smog|odour|toxic|leak|pollution|psi|pm2\.5/i;
   try {
     const newsApiKey = process.env.NEWSAPI_KEY;
     if (newsApiKey) {
       const start = Date.now();
-      const res = await fetch(`https://newsapi.org/v2/everything?q=singapore&sortBy=publishedAt&language=en&pageSize=1&apiKey=${newsApiKey}`);
+      const res = await fetch(`https://newsapi.org/v2/everything?q=singapore&sortBy=publishedAt&language=en&pageSize=10&apiKey=${newsApiKey}`);
       const latency = Date.now() - start;
       if (res.ok) {
         newsApiStatus = `✅ ONLINE (${latency}ms)`;
         const data = await res.json();
         if (data.articles?.length > 0) {
-          const article = data.articles[0];
-          newsApiTopHeadline = article.title || '';
-          newsApiTopContent = [article.title, article.description, article.content].filter(Boolean).join('. ');
+          // Pre-filter: only include articles with potential CBRNE/haze/SG relevance
+          for (const article of data.articles) {
+            const text = [article.title, article.description, article.content].filter(Boolean).join(' ');
+            if (RELEVANCE_KEYWORDS.test(text)) {
+              newsApiTopContent += `[NewsAPI] ${article.title}. ${article.description || ''}\n\n`;
+            }
+          }
         }
       } else {
         newsApiStatus = `❌ ERROR (${res.status} ${res.statusText})`;
@@ -215,6 +239,7 @@ export async function generateHourlyReport() {
 
   // 5b. Check Gov.sg Environmental APIs
   let govSgStatus = 'Unknown';
+  let pm25Readings: Record<string, number> = {};
   try {
     const dateStr = new Date(Date.now() + 8*60*60*1000).toISOString().split('T')[0];
     const start = Date.now();
@@ -313,6 +338,12 @@ export async function generateHourlyReport() {
     const pm25Msg = formatMsg('PM2.5', pmStats, 'regions');
 
     govSgStatus = `✅ ONLINE (${latency}ms)\n  • ${windSpeedMsg}\n  • ${windDirMsg}\n  • ${pm25Msg}`;
+
+    // Extract raw PM2.5 readings for use in threats section
+    if (pm25Data?.data?.items?.length > 0) {
+      const latestPmItem = pm25Data.data.items[pm25Data.data.items.length - 1];
+      pm25Readings = latestPmItem?.readings?.pm25_one_hourly || {};
+    }
   } catch (error: any) {
     govSgStatus = `❌ FAILED (${error.message || 'Unknown'})`;
   }
@@ -342,6 +373,17 @@ export async function generateHourlyReport() {
     if (recentThreats.length > 3) {
       threatSection += `<i>...and ${recentThreats.length - 3} more</i>\n`;
     }
+
+    // Show live PM2.5 readings if any haze/air quality threat is active
+    const hasHazeThreat = recentThreats.some(t => /haze|air quality/i.test(t.type || ''));
+    if (hasHazeThreat && Object.keys(pm25Readings).length > 0) {
+      threatSection += `\n🌫️ <b>Live PM2.5 Readings (1-hour):</b>\n`;
+      const regions = ['north', 'south', 'east', 'west', 'central'];
+      const row1 = regions.slice(0, 3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
+      const row2 = regions.slice(3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
+      threatSection += `  ${row1}\n  ${row2}\n`;
+      threatSection += `  <i>Ref: Normal (0-55) · Elevated (56-150) · High (151-250) · Very High (&gt;250)</i>\n`;
+    }
   } else {
     threatSection = `\n💚 <b>No CBRNE threats detected (Past 24hr)</b>\n`;
   }
@@ -353,13 +395,8 @@ export async function generateHourlyReport() {
   let selectionModel = 'Unknown';
   let totalAssessmentTokens = 0, assessmentPromptTokens = 0, assessmentCandidateTokens = 0;
   let assessmentModel = 'Unknown';
-  
-  if (newsApiTopHeadline) {
-    heartbeatSection += `📰 <b>NewsAPI:</b> ${newsApiTopHeadline}\n`;
-  } else {
-    heartbeatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
-  }
 
+  let newsApiPulse = '';
   let cnaPulse = '';
   let stPulse = '';
   let geminiAssessmentHtml = '';
@@ -367,7 +404,7 @@ export async function generateHourlyReport() {
   if (newsApiTopContent || cnaTopContent || stTopContent) {
     try {
       const newsContent = [
-        newsApiTopContent ? `[NewsAPI Article]\n${newsApiTopContent}` : '',
+        newsApiTopContent ? `[NewsAPI Articles]\n${newsApiTopContent.trim()}` : '',
         cnaTopContent ? `[CNA Articles]\n${cnaTopContent.trim()}` : '',
         stTopContent ? `[Straits Times Articles]\n${stTopContent.trim()}` : '',
       ].filter(Boolean).join('\n\n');
@@ -377,12 +414,13 @@ export async function generateHourlyReport() {
         geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds.
-Task: Review the [CNA Articles] and [Straits Times Articles]. Select the 2 most relevant headlines (prioritizing CBRNE, Haze, Air Quality, and Odour) for CNA and the 2 most relevant for Straits Times. If there's no obvious relevance, just select the top 2 major news.
+Task: Review ALL sources — [NewsAPI Articles], [CNA Articles], and [Straits Times Articles]. For each source, select the 2 most relevant headlines (prioritizing CBRNE, Haze, Air Quality, and Odour). If there's no obvious relevance, just select the top 2 major news. If a source has no articles, return an empty array for it.
 
 Output ONLY a valid raw JSON object (without markdown blocks) in the following structure:
 {
-  "cnaTop2": [{"source": "Source Category", "headline": "Headline string"}],
-  "stTop2": [{"source": "Source Category", "headline": "Headline string"}]
+  "newsApiTop2": [{"source": "Topic Category", "headline": "Headline string"}],
+  "cnaTop2": [{"source": "Topic Category", "headline": "Headline string"}],
+  "stTop2": [{"source": "Topic Category", "headline": "Headline string"}]
 }
 
 News Content:
@@ -421,6 +459,11 @@ ${newsContent}`,
       const cleanAssessmentJson = assessmentMatch ? assessmentMatch[0] : '{}';
       const assessmentResult = JSON.parse(cleanAssessmentJson);
 
+      if (selectionResult.newsApiTop2 && selectionResult.newsApiTop2.length > 0) {
+        selectionResult.newsApiTop2.forEach((item: any) => {
+          newsApiPulse += `📰 <b>NewsAPI (${item.source}):</b> ${item.headline}\n`;
+        });
+      }
       if (selectionResult.cnaTop2 && selectionResult.cnaTop2.length > 0) {
         selectionResult.cnaTop2.forEach((item: any) => {
           cnaPulse += `📡 <b>CNA RSS (${item.source}):</b> ${item.headline}\n`;
@@ -471,6 +514,7 @@ ${newsContent}`,
       assessmentModel = geminiAssessmentResponse.modelUsed || 'Unknown';
 
       threatSection += heartbeatSection.replace('Top News Pulse:', `Top News Pulse${selectionTokenStr}:`);
+      threatSection += newsApiPulse || `📰 <b>NewsAPI:</b> <i>No relevant headlines</i>\n`;
       threatSection += cnaPulse || `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
       threatSection += stPulse || `🗞️ <b>ST RSS:</b> <i>No headlines available</i>\n`;
       threatSection += `\n🤖 <b>Gemini Assessment${assessmentTokenStr}:</b>\n<i>${geminiAssessmentHtml.trim()}</i>\n`;
@@ -479,6 +523,7 @@ ${newsContent}`,
       console.error('Gemini parsing error:', e);
       // Fallback if parsing fails or all models unavailable
       threatSection += heartbeatSection;
+      threatSection += `📰 <b>NewsAPI:</b> <i>Error parsing headlines</i>\n`;
       threatSection += `📡 <b>CNA RSS:</b> <i>Error parsing top headlines</i>\n`;
       threatSection += `🗞️ <b>ST RSS:</b> <i>Error parsing top headlines</i>\n`;
       threatSection += `\n🤖 <b>Gemini Assessment:</b> <i>Unavailable or Error (${e.message})</i>\n`;
@@ -486,6 +531,7 @@ ${newsContent}`,
   } else {
     // No content at all
     threatSection += heartbeatSection;
+    threatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
     threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
     threatSection += `🗞️ <b>ST RSS:</b> <i>No headlines available</i>\n`;
   }

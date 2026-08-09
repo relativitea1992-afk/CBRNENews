@@ -69,56 +69,18 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (text.startsWith('/status')) {
-        const oneDayAgo = DateTime.now().minus({ days: 1 }).toJSDate();
-        const activeIncidents = await prisma.incident.findMany({
-          where: {
-            isRelevant: true,
-            createdAt: { gte: oneDayAgo }
-          },
-          orderBy: { createdAt: 'desc' }
-        });
-
-        if (activeIncidents.length === 0) {
-          await sendTrackedMessage(chatId, "✅ <b>Status:</b> No active CBRNE/Odour threats detected in the last 24 hours.");
-        } else {
-          let msg = `⚠️ <b>Status:</b> ${activeIncidents.length} active threat(s) detected in the last 24 hours:\n\n`;
-          activeIncidents.forEach((inc, idx) => {
-            msg += `${idx + 1}. [${inc.type}] <a href="${inc.sourceUrl}">${inc.headline}</a>\n`;
-          });
-          await sendTrackedMessage(chatId, msg);
-        }
-      } else if (text.startsWith('/latest')) {
-        const latestIncident = await prisma.incident.findFirst({
-          where: { isRelevant: true },
-          orderBy: { createdAt: 'desc' }
-        });
-
-        if (!latestIncident) {
-          await sendTrackedMessage(chatId, "No relevant threats found in the database.");
-        } else {
-           let msg = `🔍 <b>LATEST THREAT</b>\n\n<b>Headline:</b> ${latestIncident.headline}\n<b>Type:</b> ${latestIncident.type}\n<b>Summary:</b> ${latestIncident.summary}`;
-           
-           if (latestIncident.advisory) {
-             msg += `\n\n<b>Advisory:</b>\n${latestIncident.advisory}`;
-           }
-           
-           msg += `\n\n<b>Model Used:</b> ${latestIncident.modelUsed || 'Unknown'}`;
-           msg += `\n<b>Link:</b> ${latestIncident.sourceUrl}`;
-           await sendTrackedMessage(chatId, msg, { lat: latestIncident.lat, lon: latestIncident.lng, type: latestIncident.type as any });
-        }
-      } else if (text.startsWith('/resource')) {
-        await sendTrackedMessage(chatId, "⏳ <b>Generating resource consumption report...</b>");
+      const generateResourceReport = async (days: number) => {
+        await sendTrackedMessage(chatId, `⏳ <b>Generating resource consumption report for the last ${days} day(s)...</b>`);
         try {
-          const oneDayAgo = DateTime.now().minus({ days: 1 }).toJSDate();
+          const pastDate = DateTime.now().minus({ days }).toJSDate();
           
           const logs = await prisma.systemLog.findMany({
-            where: { createdAt: { gte: oneDayAgo } },
+            where: { createdAt: { gte: pastDate } },
             orderBy: { createdAt: 'desc' }
           });
           
           const threats = await prisma.incident.count({
-            where: { createdAt: { gte: oneDayAgo } }
+            where: { createdAt: { gte: pastDate } }
           });
           
           let fetchNewsRuns = 0;
@@ -146,13 +108,15 @@ export async function POST(request: NextRequest) {
               const articlesMatch = detail.match(/Total (\d+) new articles/);
               if (articlesMatch) articlesScanned += parseInt(articlesMatch[1]);
               
-              const breakdownMatch = detail.match(/\((.*?)\)/);
+              const breakdownMatch = detail.match(/\(([^)]+)\)/);
               if (breakdownMatch) {
                 const parts = breakdownMatch[1].split(', ');
                 for (const part of parts) {
                   const [src, count] = part.split(': ');
                   if (src && count) {
-                    sourceBreakdown[src] = (sourceBreakdown[src] || 0) + parseInt(count);
+                    // Consolidate all non-CNA/ST sources under NewsAPI
+                    const key = (src === 'CNA' || src === 'ST') ? src : 'NewsAPI';
+                    sourceBreakdown[key] = (sourceBreakdown[key] || 0) + parseInt(count);
                   }
                 }
               }
@@ -164,7 +128,6 @@ export async function POST(request: NextRequest) {
               if (egressMatch) egressBytes += parseInt(egressMatch[1]);
 
               // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Models: gemini-1.5-flash
-              // Also supports old format: via Gemini [gemini-2.0-flash] | Tokens Consumed: 1234 [In: 1000, Out: 234]
               const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Models: ([\w., -]+))?/);
               if (tokenMatch) {
                 const tot = parseInt(tokenMatch[1]);
@@ -201,7 +164,6 @@ export async function POST(request: NextRequest) {
               const egressMatch = detail.match(/Egress: (\d+) bytes/);
               if (egressMatch) egressBytes += parseInt(egressMatch[1]);
               
-              // Tokens Consumed [Headline Selection: 10 [In: 5, Out: 5] (model-a) | Gemini Assessment: 20 [In: 10, Out: 10] (model-b)]
               const selectionMatch = detail.match(/Headline Selection: (\d+)(?: \[In: (\d+), Out: (\d+)\])? \(([\w.-]+)\)/);
               if (selectionMatch) {
                 const tok = parseInt(selectionMatch[1]);
@@ -244,8 +206,8 @@ export async function POST(request: NextRequest) {
           }
           
           const allIncidentRows = await prisma.incident.count();
-          const activeThreats24h = await prisma.incident.count({
-            where: { isRelevant: true, createdAt: { gte: oneDayAgo } }
+          const activeThreats = await prisma.incident.count({
+            where: { isRelevant: true, createdAt: { gte: pastDate } }
           });
           const logRows = await prisma.systemLog.count();
 
@@ -259,7 +221,7 @@ export async function POST(request: NextRequest) {
           };
 
           const dateOpts = { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' } as Intl.DateTimeFormatOptions;
-          const startStr = oneDayAgo.toLocaleString('en-SG', dateOpts);
+          const startStr = pastDate.toLocaleString('en-SG', dateOpts);
           const endStr = new Date().toLocaleString('en-SG', dateOpts);
           let msg = `📊 <b>Resource & Infrastructure Report</b>\n`;
           msg += `<i>Report Window: ${startStr} to ${endStr}</i>\n\n`;
@@ -290,7 +252,7 @@ export async function POST(request: NextRequest) {
           
           msg += `📰 <b>Data Processing & Ingress:</b>\n`;
           msg += `- Total Articles Scanned: ${articlesScanned}\n`;
-          msg += `- New Threats Detected (24h): ${activeThreats24h}\n`;
+          msg += `- New Threats Detected (${days}d): ${activeThreats}\n`;
           msg += `- Est. Data Transport (Ingress): ~${formatBytes(ingressBytes)}\n`;
           msg += `- Est. Data Transport (Egress): ~${formatBytes(egressBytes)}\n\n`;
           
@@ -303,7 +265,7 @@ export async function POST(request: NextRequest) {
           
           msg += `\n💾 <b>Storage & Infrastructure:</b>\n`;
           msg += `- Total Database Size: ${dbSize}\n`;
-          msg += `- Active Threats (Last 24h): ${activeThreats24h} rows\n`;
+          msg += `- Active Threats (Last ${days}d): ${activeThreats} rows\n`;
           msg += `- Total Analyzed URLs (All Time): ${allIncidentRows.toLocaleString()} rows\n`;
           msg += `- System Logs Retained: ${logRows.toLocaleString()} rows\n`;
 
@@ -311,6 +273,74 @@ export async function POST(request: NextRequest) {
         } catch (e: any) {
           console.error('Error generating resource report:', e);
           await sendTrackedMessage(chatId, `❌ <b>Failed to generate resource report:</b> ${e.message}`);
+        }
+      };
+
+      // Check if this is a reply to the /resource prompt
+      if (body.message.reply_to_message && body.message.reply_to_message.from?.is_bot) {
+         const replyText = body.message.reply_to_message.text || '';
+         if (replyText.includes("Please enter the number of days for the resource report")) {
+            const parsed = parseInt(text);
+            if (!isNaN(parsed) && parsed > 0) {
+               await generateResourceReport(parsed);
+               return NextResponse.json({ success: true });
+            } else {
+               await sendTrackedMessage(chatId, "❌ Invalid duration. Please enter a valid number of days (e.g., 7).");
+               return NextResponse.json({ success: true });
+            }
+         }
+      }
+
+      if (text.startsWith('/status')) {
+        const oneDayAgo = DateTime.now().minus({ days: 1 }).toJSDate();
+        const activeIncidents = await prisma.incident.findMany({
+          where: {
+            isRelevant: true,
+            createdAt: { gte: oneDayAgo }
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        if (activeIncidents.length === 0) {
+          await sendTrackedMessage(chatId, "✅ <b>Status:</b> No active CBRNE/Odour threats detected in the last 24 hours.");
+        } else {
+          let msg = `⚠️ <b>Status:</b> ${activeIncidents.length} active threat(s) detected in the last 24 hours:\n\n`;
+          activeIncidents.forEach((inc, idx) => {
+            msg += `${idx + 1}. [${inc.type}] <a href="${inc.sourceUrl}">${inc.headline}</a>\n`;
+          });
+          await sendTrackedMessage(chatId, msg);
+        }
+      } else if (text.startsWith('/latest')) {
+        const latestIncident = await prisma.incident.findFirst({
+          where: { isRelevant: true },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        if (!latestIncident) {
+          await sendTrackedMessage(chatId, "No relevant threats found in the database.");
+        } else {
+           let msg = `🔍 <b>LATEST THREAT</b>\n\n<b>Headline:</b> ${latestIncident.headline}\n<b>Type:</b> ${latestIncident.type}\n<b>Summary:</b> ${latestIncident.summary}`;
+           
+           if (latestIncident.advisory) {
+             msg += `\n\n<b>Advisory:</b>\n${latestIncident.advisory}`;
+           }
+           
+           msg += `\n\n<b>Model Used:</b> ${latestIncident.modelUsed || 'Unknown'}`;
+           msg += `\n<b>Link:</b> ${latestIncident.sourceUrl}`;
+           await sendTrackedMessage(chatId, msg, { lat: latestIncident.lat, lon: latestIncident.lng, type: latestIncident.type as any });
+        }
+      } else if (text.startsWith('/resource')) {
+        const parts = text.split(' ');
+        if (parts.length === 1 && text === '/resource') {
+           await sendTrackedMessage(chatId, "📅 <b>Please enter the number of days for the resource report:</b>\n<i>(e.g., type 1 for 24h, 7 for a week)</i>", { reply_markup: { force_reply: true, input_field_placeholder: "Enter number of days..." } });
+           return NextResponse.json({ success: true });
+        }
+        
+        const parsed = parseInt(parts[1]);
+        if (!isNaN(parsed) && parsed > 0) {
+           await generateResourceReport(parsed);
+        } else {
+           await sendTrackedMessage(chatId, "❌ Invalid syntax. Use /resource [days] or just /resource.");
         }
       } else if (text.startsWith('/test')) {
         await sendTrackedMessage(chatId, "⏳ <b>Generating test report...</b> This may take a few seconds.");

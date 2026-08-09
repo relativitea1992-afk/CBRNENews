@@ -57,7 +57,7 @@ export async function GET(request: Request) {
             title: article.title || '',
             content: (article.description || '') + ' ' + (article.content || ''),
             url: article.url,
-            source: article.source?.name || 'NewsAPI',
+            source: 'NewsAPI',
             publishedAt: new Date(article.publishedAt || Date.now())
           });
         }
