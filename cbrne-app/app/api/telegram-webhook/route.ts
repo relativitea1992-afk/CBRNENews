@@ -292,7 +292,8 @@ export async function POST(request: NextRequest) {
           
           msg += `\n🎯 <b>Threat Intelligence:</b>\n`;
           msg += `- Threats Detected: ${relevantSavedIncidents}\n`;
-          msg += `- Relevance Ratio: ${relevanceRatio} (out of ${totalSavedIncidents} saved)\n`;
+          msg += `- AI Signal-to-Noise: ${relevanceRatio}\n`;
+          msg += `  └ <i>(Identified ${relevantSavedIncidents} real threats from ${totalSavedIncidents} total articles scraped)</i>\n`;
           msg += `- Typology Breakdown: ${threatTypes}\n`;
           msg += `- Hotspots: ${sgHotspots} inside SG, ${crossBorderHotspots} cross-border\n`;
           
