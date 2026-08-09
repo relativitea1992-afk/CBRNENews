@@ -470,6 +470,8 @@ export async function generateHourlyReport() {
 Below are the top extracted news articles from live feeds.
 Task: Review ALL sources — [NewsAPI Articles], [CNA Articles], and [Straits Times Articles]. For each source, select the 2 most relevant headlines (prioritizing CBRNE, Haze, Air Quality, and Odour). If there's no obvious relevance, just select the top 2 major news. If a source has no articles, return an empty array for it.
 
+CRITICAL INSTRUCTION: You must assess the similarity of the 6 headlines you select across ALL sources. If two or more headlines are reporting on the same exact event or are highly similar, drop the duplicates and select the next most relevant, unique headline from that source. The final selection of headlines MUST be diverse and cover different events.
+
 Output ONLY a valid raw JSON object (without markdown blocks) in the following structure:
 {
   "newsApiTop2": [{"source": "Topic Category", "headline": "Headline string"}],
