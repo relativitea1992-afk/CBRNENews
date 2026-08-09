@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { after } from 'next/server';
 import Parser from 'rss-parser';
 import prisma from '@/lib/prisma';
-import { triageNewsArticle } from '@/lib/gemini';
+import { triageNewsArticle, clusterIncident } from '@/lib/gemini';
 import { sendTelegramMessage } from '@/lib/telegram';
 
 const parser = new Parser();
@@ -165,9 +165,32 @@ export async function GET(request: Request) {
         totalCandidatesTokens += triage.usageMetadata.candidatesTokenCount || 0;
       }
 
+      let clusterId: string | undefined = undefined;
+
+      if (triage && triage.isRelevant) {
+        // Find recent active threats to cluster with
+        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+        const recentActiveThreats = await prisma.incident.findMany({
+          where: { isRelevant: true, createdAt: { gte: fortyEightHoursAgo } },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        if (recentActiveThreats.length > 0) {
+           const matchedClusterId = await clusterIncident(
+             triage.headline || article.title,
+             triage.summary || '',
+             triage.type || 'Unknown',
+             recentActiveThreats.map(t => ({ id: t.id, clusterId: t.clusterId, headline: t.headline, summary: t.summary, type: t.type }))
+           );
+           if (matchedClusterId) {
+             clusterId = matchedClusterId;
+           }
+        }
+      }
+
       if (triage) {
         // Save to DB (both threats and non-threats) to prevent reprocessing them next hour
-        await prisma.incident.create({
+        const savedIncident = await prisma.incident.create({
           data: {
             headline: triage.headline || article.title,
             summary: triage.summary || 'No relevant threats detected.',
@@ -180,8 +203,17 @@ export async function GET(request: Request) {
             advisory: triage.advisory,
             modelUsed: triage.modelUsed || 'Unknown',
             isRelevant: triage.isRelevant || false,
+            clusterId: clusterId
           }
         });
+        
+        if (triage.isRelevant && !clusterId) {
+          // If no existing cluster matched, this incident becomes its own new cluster
+          await prisma.incident.update({
+             where: { id: savedIncident.id },
+             data: { clusterId: savedIncident.id }
+          });
+        }
       }
 
       if (triage && triage.isRelevant) {

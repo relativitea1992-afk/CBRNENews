@@ -357,29 +357,75 @@ export async function generateHourlyReport() {
   const vercelRegion = process.env.VERCEL_REGION || 'Local/Unknown';
   const computeStatus = `✅ Region: ${vercelRegion} | RAM: ${memoryMB}MB`;
 
-  // 7. Check for relevant incidents in the past 24 hours
+  // 7. Check for relevant incidents in the past 24 hours (Cluster aware)
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const recentThreats = await prisma.incident.findMany({
+  
+  // Find all active cluster IDs that had an update in the last 24h
+  const recentUpdates = await prisma.incident.findMany({
     where: {
       createdAt: { gte: twentyFourHoursAgo },
       isRelevant: true,
     },
-    orderBy: { createdAt: 'desc' },
+    select: { clusterId: true, id: true }
+  });
+  
+  const activeClusterIds = [...new Set(recentUpdates.map(t => t.clusterId || t.id))];
+
+  // Fetch all incidents for these active clusters (limit to past 7 days to avoid unbounded growth)
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const clusteredThreats = await prisma.incident.findMany({
+    where: {
+      OR: [
+        { clusterId: { in: activeClusterIds } },
+        { id: { in: activeClusterIds } } // Fallback for old standalone incidents
+      ],
+      isRelevant: true,
+      createdAt: { gte: sevenDaysAgo }
+    },
+    orderBy: { publishedAt: 'asc' },
   });
 
+  const clusters: Record<string, typeof clusteredThreats> = {};
+  clusteredThreats.forEach(t => {
+    const key = t.clusterId || t.id;
+    if (!clusters[key]) clusters[key] = [];
+    clusters[key].push(t);
+  });
+
+  const numClusters = Object.keys(clusters).length;
+
   let threatSection = '';
-  if (recentThreats.length > 0) {
-    threatSection = `\n<b>🚨 Threats Detected (Past 24hr):</b> ${recentThreats.length}\n`;
-    for (const t of recentThreats.slice(0, 3)) {
-      const timeStr = new Date(t.publishedAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
-      threatSection += `• [${timeStr}] <b>[${t.type}]</b> ${t.headline}\n`;
+  let clusterTimelineContext = '';
+
+  if (numClusters > 0) {
+    threatSection = `\n<b>🚨 Active Threat Events (Updated Past 24hr):</b> ${numClusters}\n`;
+    
+    // Format threat section & build timeline context for Gemini
+    let count = 0;
+    for (const [clusterId, incidents] of Object.entries(clusters)) {
+      if (count < 3) {
+        const latestIncident = incidents[incidents.length - 1];
+        const type = latestIncident.type;
+        const numUpdates = incidents.length;
+        const timeStr = new Date(latestIncident.publishedAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        
+        threatSection += `• [${timeStr}] <b>[${type}]</b> ${latestIncident.headline} <i>(${numUpdates} update${numUpdates > 1 ? 's' : ''})</i>\n`;
+      }
+      
+      clusterTimelineContext += `\n[Threat Event: ${incidents[0].type}]\n`;
+      incidents.forEach(i => {
+         clusterTimelineContext += `- [${i.publishedAt.toISOString()}] ${i.headline}\n`;
+      });
+      
+      count++;
     }
-    if (recentThreats.length > 3) {
-      threatSection += `<i>...and ${recentThreats.length - 3} more</i>\n`;
+    
+    if (numClusters > 3) {
+      threatSection += `<i>...and ${numClusters - 3} more active events</i>\n`;
     }
 
     // Show live PM2.5 readings if any haze/air quality threat is active
-    const hasHazeThreat = recentThreats.some(t => /haze|air quality/i.test(t.type || ''));
+    const hasHazeThreat = clusteredThreats.some(t => /haze|air quality/i.test(t.type || ''));
     if (hasHazeThreat && Object.keys(pm25Readings).length > 0) {
       const liveTimeStr = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
       threatSection += `\n🌫️ <b>Live PM2.5 Readings (${liveTimeStr}):</b>\n`;
@@ -434,8 +480,8 @@ ${newsContent}`,
         }),
         geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
-Below are the top extracted news articles from live feeds.
-Task 1: Provide a detailed threat assessment based on all articles (Yes/No threat relevance + brief reasoning). Include Haze and Odour as threats.
+Below are the top extracted news articles from live feeds, as well as timelines of ongoing active threat events.
+Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles.
 Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
 Task 3: Provide an actionable advisory based strictly on the assessment (or "None").
 
@@ -448,8 +494,11 @@ Output ONLY a valid raw JSON object (without markdown blocks) in the following s
 
 Note: In the HTML fields, you may use standard Telegram HTML tags like <b> for bolding. Do NOT use markdown (**). When using common widely known acronyms, use ONLY the acronym.
 
-News Content:
-${newsContent}`,
+New Articles:
+${newsContent}
+
+Active Threat Timelines:
+${clusterTimelineContext || 'No ongoing clustered threats.'}`,
           config: { responseMimeType: "application/json" }
         })
       ]);

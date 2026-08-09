@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
                   const [src, count] = part.split(': ');
                   if (src && count) {
                     // Consolidate all non-CNA/ST sources under NewsAPI
-                    const key = (src === 'CNA' || src === 'ST') ? src : 'NewsAPI';
+                    const key = (src === 'CNA' || src === 'ST RSS' || src === 'ST') ? src : 'NewsAPI';
                     sourceBreakdown[key] = (sourceBreakdown[key] || 0) + parseInt(count);
                   }
                 }
@@ -207,10 +207,33 @@ export async function POST(request: NextRequest) {
           }
           
           const allIncidentRows = await prisma.incident.count();
-          const activeThreats = await prisma.incident.count({
-            where: { isRelevant: true, createdAt: { gte: pastDate } }
-          });
           const logRows = await prisma.systemLog.count();
+
+          // 1. Relevance / Noise Ratio
+          const totalSavedIncidents = await prisma.incident.count({ where: { createdAt: { gte: pastDate } } });
+          const relevantSavedIncidents = await prisma.incident.count({ where: { isRelevant: true, createdAt: { gte: pastDate } } });
+          const relevanceRatio = totalSavedIncidents > 0 ? ((relevantSavedIncidents / totalSavedIncidents) * 100).toFixed(1) + '%' : 'N/A';
+
+          // 2. Threat Typology Breakdown
+          const threatTypesRaw = await prisma.incident.groupBy({
+             by: ['type'],
+             where: { isRelevant: true, createdAt: { gte: pastDate } },
+             _count: { type: true }
+          });
+          const threatTypes = threatTypesRaw.length > 0 
+              ? threatTypesRaw.map(t => `${t.type}: ${t._count.type}`).join(', ')
+              : 'None';
+
+          // 3. Geospatial Hotspots (approximate SG bounding box)
+          const sgHotspots = await prisma.incident.count({
+             where: { 
+                 isRelevant: true, 
+                 createdAt: { gte: pastDate },
+                 lat: { gte: 1.15, lte: 1.48 },
+                 lng: { gte: 103.58, lte: 104.05 }
+             }
+          });
+          const crossBorderHotspots = relevantSavedIncidents - sgHotspots;
 
           const formatTokens = (t: number) => t.toLocaleString();
           const formatBytes = (b: number) => {
@@ -264,11 +287,16 @@ export async function POST(request: NextRequest) {
             });
           }
           
-          msg += `\n💾 <b>Storage & Infrastructure:</b>\n`;
-          msg += `- Total Database Size: ${dbSize}\n`;
-          msg += `- Active Threats (Last ${days}d): ${activeThreats} rows\n`;
-          msg += `- Total Analyzed URLs (All Time): ${allIncidentRows.toLocaleString()} rows\n`;
-          msg += `- System Logs Retained: ${logRows.toLocaleString()} rows\n`;
+          msg += `\n🎯 <b>Threat Intelligence:</b>\n`;
+          msg += `- Threats Detected: ${relevantSavedIncidents}\n`;
+          msg += `- Relevance Ratio: ${relevanceRatio} (out of ${totalSavedIncidents} saved)\n`;
+          msg += `- Typology Breakdown: ${threatTypes}\n`;
+          msg += `- Hotspots: ${sgHotspots} inside SG, ${crossBorderHotspots} cross-border\n`;
+          
+          msg += `\n💽 <b>Database Health:</b>\n`;
+          msg += `- Incident Rows: ${allIncidentRows.toLocaleString()}\n`;
+          msg += `- SystemLog Rows: ${logRows.toLocaleString()}\n`;
+          msg += `- Storage Size: ${dbSize}\n`;
 
           await sendTrackedMessage(chatId, msg);
         } catch (e: any) {

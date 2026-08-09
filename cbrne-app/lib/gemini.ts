@@ -238,3 +238,60 @@ ${articleText}
   }
   return null;
 }
+
+export async function clusterIncident(
+  newHeadline: string,
+  newSummary: string,
+  newType: string,
+  recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
+): Promise<string | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  
+  // Filter incidents to match the exact same type as a basic heuristic
+  const matchingTypeIncidents = recentIncidents.filter(i => i.type === newType);
+  if (matchingTypeIncidents.length === 0) return null;
+  
+  const candidatesList = matchingTypeIncidents.map((t, idx) => 
+    `[Candidate ${idx}] ClusterID: ${t.clusterId || t.id}\nHeadline: ${t.headline}\nSummary: ${t.summary}`
+  ).join('\n\n');
+
+  const prompt = `You are a CBRNE Intelligence Analyst. Your task is to determine if a newly detected news article refers to the EXACT SAME ongoing real-world event as any of the recent threats.
+
+New Incident:
+Headline: ${newHeadline}
+Summary: ${newSummary}
+Type: ${newType}
+
+Recent Active Threats:
+${candidatesList}
+
+Rules:
+1. ONLY group them if they are undeniably the same event (e.g. updates on the same chemical fire, same hazy period).
+2. If it is a completely separate incident (even if similar type), do NOT group them.
+3. If it matches, return the ClusterID of the match.
+
+Output JSON format strictly:
+{
+  "isSameEvent": true,
+  "clusterId": "the-matched-cluster-id"
+}
+OR
+{
+  "isSameEvent": false
+}
+`;
+
+  try {
+    const responseText = await geminiGenerate(prompt, 'gemini-3.5-flash-lite');
+    const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const result = JSON.parse(cleaned);
+    
+    if (result.isSameEvent && result.clusterId) {
+      return result.clusterId;
+    }
+  } catch (error) {
+    console.error('Error clustering incident with Gemini:', error);
+  }
+  
+  return null;
+}
