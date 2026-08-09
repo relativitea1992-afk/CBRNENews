@@ -5,7 +5,10 @@ import { DateTime } from 'luxon';
 
 export const preferredRegion = 'sin1';
 
+let isWebhookColdStart = true;
+
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   const secret = request.nextUrl.searchParams.get('secret');
   if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -37,9 +40,14 @@ export async function POST(request: NextRequest) {
          manualEgressBytes += bytes;
          if (manualLogId) {
             try {
+              const isCold = isWebhookColdStart;
+              isWebhookColdStart = false;
+              const duration = Date.now() - startTime;
+              const memUsage = Math.round(process.memoryUsage().rss / 1024 / 1024);
+              const computeStr = ` | Compute: ${duration}ms, ${memUsage}MB RAM, ${isCold ? 'Cold' : 'Warm'} Start`;
               await prisma.systemLog.update({
                 where: { id: manualLogId },
-                data: { details: `Triggered by ${requesterName} (IP: ${telegramIp}) | Egress: ${manualEgressBytes} bytes` }
+                data: { details: `Triggered by ${requesterName} (IP: ${telegramIp}) | Egress: ${manualEgressBytes} bytes${computeStr}` }
               });
             } catch(e) {}
          }
@@ -101,15 +109,13 @@ export async function POST(request: NextRequest) {
           let egressBytes = 0;
           const sourceBreakdown: Record<string, number> = {};
 
-          let totalFetchDuration = 0;
-          let maxFetchMemory = 0;
-          let fetchColdStarts = 0;
-          let fetchWarmStarts = 0;
-
-          let totalHourlyDuration = 0;
-          let maxHourlyMemory = 0;
-          let hourlyColdStarts = 0;
-          let hourlyWarmStarts = 0;
+          const computeStats: Record<string, {
+            totalDuration: number;
+            maxMemory: number;
+            coldStarts: number;
+            warmStarts: number;
+            runs: number;
+          }> = {};
 
           for (const log of logs) {
             const detail = log.details || '';
@@ -215,15 +221,14 @@ export async function POST(request: NextRequest) {
               const mem = parseInt(computeMatch[2]);
               const isCold = computeMatch[3] === 'Cold';
               
-              if (log.jobName === 'fetch-news') {
-                 totalFetchDuration += dur;
-                 if (mem > maxFetchMemory) maxFetchMemory = mem;
-                 isCold ? fetchColdStarts++ : fetchWarmStarts++;
-              } else if (log.jobName === 'hourly-report') {
-                 totalHourlyDuration += dur;
-                 if (mem > maxHourlyMemory) maxHourlyMemory = mem;
-                 isCold ? hourlyColdStarts++ : hourlyWarmStarts++;
+              if (!computeStats[log.jobName]) {
+                 computeStats[log.jobName] = { totalDuration: 0, maxMemory: 0, coldStarts: 0, warmStarts: 0, runs: 0 };
               }
+              
+              computeStats[log.jobName].totalDuration += dur;
+              if (mem > computeStats[log.jobName].maxMemory) computeStats[log.jobName].maxMemory = mem;
+              isCold ? computeStats[log.jobName].coldStarts++ : computeStats[log.jobName].warmStarts++;
+              computeStats[log.jobName].runs++;
             }
           }
 
@@ -324,18 +329,14 @@ export async function POST(request: NextRequest) {
           msg += `- Hotspots: ${sgHotspots} inside SG, ${crossBorderHotspots} cross-border\n`;
           
           msg += `\n💾 <b>Storage & Compute Infrastructure:</b>\n`;
-          if (fetchNewsRuns > 0) {
-            msg += `<b>Cron (fetch-news):</b>\n`;
-            msg += `- Avg Duration: ${(totalFetchDuration / fetchNewsRuns / 1000).toFixed(1)}s\n`;
-            msg += `- Peak RAM: ${maxFetchMemory} MB\n`;
-            msg += `- Starts: ${fetchColdStarts} Cold, ${fetchWarmStarts} Warm\n`;
+          
+          for (const [job, stats] of Object.entries(computeStats)) {
+            msg += `<b>Cron/Job (${job}):</b>\n`;
+            msg += `- Avg Duration: ${(stats.totalDuration / stats.runs / 1000).toFixed(1)}s\n`;
+            msg += `- Peak RAM: ${stats.maxMemory} MB\n`;
+            msg += `- Starts: ${stats.coldStarts} Cold, ${stats.warmStarts} Warm\n`;
           }
-          if (hourlyReportRuns > 0) {
-            msg += `<b>Cron (hourly-report):</b>\n`;
-            msg += `- Avg Duration: ${(totalHourlyDuration / hourlyReportRuns / 1000).toFixed(1)}s\n`;
-            msg += `- Peak RAM: ${maxHourlyMemory} MB\n`;
-            msg += `- Starts: ${hourlyColdStarts} Cold, ${hourlyWarmStarts} Warm\n`;
-          }
+
           msg += `<b>Database:</b>\n`;
           msg += `- Total Size: ${dbSize}\n`;
           msg += `- Active Threats (Last ${days}d): ${activeThreats} rows\n`;
