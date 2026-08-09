@@ -48,7 +48,7 @@ export async function generateHourlyReport() {
           for (const part of parts) {
             const [src, count] = part.split(': ');
             if (src && count) {
-              const key = (src === 'CNA' || src === 'ST') ? src : 'NewsAPI';
+              const key = (src === 'CNA' || src === 'ST RSS') ? src : 'NewsAPI';
               consolidated[key] = (consolidated[key] || 0) + parseInt(count);
             }
           }
