@@ -215,6 +215,7 @@ export async function POST(request: NextRequest) {
           // 1. Relevance / Noise Ratio
           const totalSavedIncidents = await prisma.incident.count({ where: { createdAt: { gte: pastDate } } });
           const relevantSavedIncidents = await prisma.incident.count({ where: { isRelevant: true, createdAt: { gte: pastDate } } });
+          const irrelevantSavedIncidents = totalSavedIncidents - relevantSavedIncidents;
           const relevanceRatio = totalSavedIncidents > 0 ? ((relevantSavedIncidents / totalSavedIncidents) * 100).toFixed(1) + '%' : 'N/A';
 
           // 2. Threat Typology Breakdown
@@ -293,7 +294,7 @@ export async function POST(request: NextRequest) {
           msg += `\n🎯 <b>Threat Intelligence:</b>\n`;
           msg += `- Threats Detected: ${relevantSavedIncidents}\n`;
           msg += `- AI Signal-to-Noise: ${relevanceRatio}\n`;
-          msg += `  └ <i>(Identified ${relevantSavedIncidents} real threats from ${totalSavedIncidents} total articles scraped)</i>\n`;
+          msg += `  └ <i>(Filtered out ${irrelevantSavedIncidents} irrelevant articles out of ${totalSavedIncidents} total analyzed by AI)</i>\n`;
           msg += `- Typology Breakdown: ${threatTypes}\n`;
           msg += `- Hotspots: ${sgHotspots} inside SG, ${crossBorderHotspots} cross-border\n`;
           
