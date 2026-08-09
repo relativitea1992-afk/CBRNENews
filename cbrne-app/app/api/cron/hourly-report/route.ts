@@ -38,6 +38,7 @@ export async function generateHourlyReport() {
       outcome = outcome.replace(/ \| Models: [^|]+/g, '');
       outcome = outcome.replace(/ \| Ingress: \d+ bytes/g, '');
       outcome = outcome.replace(/ \| Egress: \d+ bytes/g, '');
+      outcome = outcome.replace(/ \| Compute: .*$/g, '');
 
       // Consolidate individual source names under "NewsAPI"
       outcome = outcome.replace(/\(([^)]+)\)/, (match: string, inner: string) => {
