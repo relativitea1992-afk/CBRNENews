@@ -435,9 +435,9 @@ OR
     const result = JSON.parse(cleaned);
     
     if (result.isSameEvent && result.clusterId) {
-       return { clusterId: result.clusterId, usageMetadata: response.usageMetadata };
+       return { clusterId: result.clusterId, usageMetadata: response.usageMetadata, modelUsed: response.modelUsed };
     }
-    return { clusterId: null, usageMetadata: response.usageMetadata };
+    return { clusterId: null, usageMetadata: response.usageMetadata, modelUsed: response.modelUsed };
   } catch (error) {
     console.error('Error clustering incident with Gemini:', error);
   }

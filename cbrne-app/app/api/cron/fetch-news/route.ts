@@ -267,8 +267,9 @@ export async function GET(request: Request) {
           }
 
           // Save to DB
-          const savedIncident = await prisma.incident.create({
-            data: {
+          const savedIncident = await prisma.incident.upsert({
+            where: { sourceUrl: article.url },
+            create: {
               headline: triage.headline || article.title,
               summary: triage.summary || 'No relevant threats detected.',
               sourceUrl: article.url,
@@ -281,7 +282,8 @@ export async function GET(request: Request) {
               modelUsed: triage.modelUsed || 'Unknown',
               isRelevant: triage.isRelevant || false,
               clusterId: clusterId
-            }
+            },
+            update: {} // do not overwrite existing incident if it was just added in a race condition
           });
           
           if (triage.isRelevant && !clusterId) {
