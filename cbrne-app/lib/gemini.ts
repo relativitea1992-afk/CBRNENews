@@ -391,7 +391,7 @@ export async function clusterIncident(
   newSummary: string,
   newType: string,
   recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
-): Promise<{ clusterId: string | null, usageMetadata?: any } | null> {
+): Promise<{ clusterId: string | null, usageMetadata?: any, modelUsed?: string } | null> {
   if (!process.env.GEMINI_API_KEY) return null;
   
   // Filter incidents to match the exact same type as a basic heuristic
