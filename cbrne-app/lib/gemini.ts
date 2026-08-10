@@ -189,7 +189,76 @@ ${articleText}
         }
       }
 
-      if (latestStData) {
+      // Distance-based assessment for far-away incidents
+      const SG_CENTER_LAT = 1.3521;
+      const SG_CENTER_LNG = 103.8198;
+      const distToSG = getDistance(result1.lat!, result1.lng!, SG_CENTER_LAT, SG_CENTER_LNG);
+
+      // Calculate bearing from incident to Singapore
+      const getBearing = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const dLon = deg2rad(lon2 - lon1);
+        const y = Math.sin(dLon) * Math.cos(deg2rad(lat2));
+        const x = Math.cos(deg2rad(lat1)) * Math.sin(deg2rad(lat2)) -
+                  Math.sin(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.cos(dLon);
+        return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+      };
+
+      const bearingToSG = getBearing(result1.lat!, result1.lng!, SG_CENTER_LAT, SG_CENTER_LNG);
+      const bearingLabel = getBlowingTowards(bearingToSG + 180); // Convert "towards" bearing to a "from" direction for getBlowingTowards
+
+      if (distToSG > 200 && latestStData) {
+        // Far-away incident: provide pre-computed factual distance analysis
+        // Get the actual wind speed and direction from the closest SG station
+        const latestSpdReading = latestSpeedReadings.find((s: any) => s.stationId === closestStation.id);
+        const latestDirReading = latestDirReadings.find((d: any) => d.stationId === closestStation.id);
+        const sgWindSpeedKmh = latestSpdReading ? (latestSpdReading.value * 1.852) : 0;
+        const sgWindDirDeg = latestDirReading?.value ?? null;
+        const sgWindBlowingTowards = sgWindDirDeg !== null ? getBlowingTowards(sgWindDirDeg) : 'unknown';
+
+        // Calculate if wind at Singapore is blowing FROM the direction of the incident
+        // i.e., would wind carry hazard from incident towards Singapore?
+        // Bearing from incident to SG tells us the direction hazard would need to travel
+        // Wind "blowing towards" direction tells us where wind carries things
+        let windAligned = false;
+        let travelTimeHrs = Infinity;
+        if (sgWindSpeedKmh > 0) {
+          travelTimeHrs = distToSG / sgWindSpeedKmh;
+          // Check if the wind direction at the incident location would push towards SG
+          // The hazard needs to travel in the direction of bearingToSG
+          // Wind blows towards (sgWindDirDeg+180)%360
+          if (sgWindDirDeg !== null) {
+            const windTowardsDeg = (sgWindDirDeg + 180) % 360;
+            let angleDiff = Math.abs(bearingToSG - windTowardsDeg);
+            if (angleDiff > 180) angleDiff = 360 - angleDiff;
+            windAligned = angleDiff < 60; // Within 60° cone
+          }
+        }
+
+        const travelTimeStr = travelTimeHrs === Infinity ? 'incalculable (no wind)' :
+          travelTimeHrs > 48 ? `~${Math.round(travelTimeHrs)} hours (${(travelTimeHrs / 24).toFixed(1)} days)` :
+          `~${Math.round(travelTimeHrs)} hours`;
+
+        windContext = `\n\nDISTANCE ASSESSMENT (PRE-COMPUTED — USE THESE FACTS EXACTLY, DO NOT FABRICATE STATION DATA):
+The incident is located ${Math.round(distToSG)} km from Singapore (direction: ${bearingLabel} of Singapore).
+Singapore weather station reference: ${closestStation.name} (Singapore-based, Lat: ${closestStation.location.latitude}, Lng: ${closestStation.location.longitude})
+Current wind at Singapore: ${sgWindSpeedKmh.toFixed(1)} km/h blowing towards ${sgWindBlowingTowards}
+Wind alignment towards Singapore from incident: ${windAligned ? 'YES — wind could carry hazard towards Singapore' : 'NO — wind is not blowing from the incident direction towards Singapore'}
+Estimated travel time at current wind speed: ${travelTimeStr}
+Will likely affect Singapore within 24 hours: ${(windAligned && travelTimeHrs <= 24) ? 'POSSIBLE' : 'UNLIKELY'}
+
+IMPORTANT RULES FOR YOUR ADVISORY:
+- You MUST state the distance (${Math.round(distToSG)} km) from the incident to Singapore.
+- You MUST reference ONLY the Singapore-based station "${closestStation.name}" as your wind data source. Do NOT invent or reference any other weather station.
+- You MUST state the current Singapore wind speed (${sgWindSpeedKmh.toFixed(1)} km/h) and direction (blowing towards ${sgWindBlowingTowards}).
+- You MUST state the estimated travel time (${travelTimeStr}) and whether it will likely affect Singapore within 24 hours.
+- If it will NOT affect Singapore within 24 hours, state: "Based on the distance of ${Math.round(distToSG)} km and current wind conditions (${sgWindSpeedKmh.toFixed(1)} km/h blowing towards ${sgWindBlowingTowards}), this hazard is unlikely to affect Singapore within the next 24 hours."`;
+
+        if (pastHourSummary) {
+          windContext += `\n${pastHourSummary}\n`;
+        }
+
+      } else if (latestStData) {
+        // Nearby incident: provide full station data for detailed projection
         windContext = `\n\nMATHEMATICALLY CLOSEST WEATHER STATION DATA:\nTimestamp: ${latestTimestamp}\n${latestStData}\n`;
         if (histStData) {
           windContext += `\nHISTORICAL TREND DATA FOR THIS STATION (~1 hour ago):\nTimestamp: ${historicalTimestamp}\n${histStData}\n`;
