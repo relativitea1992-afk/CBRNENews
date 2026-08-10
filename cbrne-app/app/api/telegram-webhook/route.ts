@@ -485,6 +485,10 @@ export async function POST(request: NextRequest) {
               method: 'POST',
               body: formData,
             });
+            
+            // Track egress for the image upload (approximate size of payload)
+            await trackEgress(arrayBuffer.byteLength + 500);
+            
             if (!photoResponse.ok) {
               console.error('Failed to send snapshot photo:', await photoResponse.text());
               await sendTrackedMessage(chatId, "❌ Failed to send dashboard snapshot photo.");
