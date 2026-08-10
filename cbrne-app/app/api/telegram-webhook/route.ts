@@ -465,7 +465,7 @@ export async function POST(request: NextRequest) {
       } else if (text.startsWith('/snapshot')) {
         const dashboardBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
         const dashboardUrl = `${dashboardBaseUrl}?snapshot=true`;
-        const microlinkUrl = `https://api.microlink.io?url=${encodeURIComponent(dashboardUrl)}&screenshot=true&meta=false&embed=screenshot.url&waitFor=%23map-ready&adblock=false&force=true`;
+        const microlinkUrl = `https://api.microlink.io?url=${encodeURIComponent(dashboardUrl)}&screenshot=true&meta=false&embed=screenshot.url&waitUntil=networkidle0&delay=5000&adblock=false&force=true`;
         
         await sendTrackedMessage(chatId, "📸 <b>Taking snapshot of the live dashboard...</b>");
         
