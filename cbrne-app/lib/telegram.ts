@@ -1,3 +1,18 @@
+export function sanitizeTgHtml(str: string): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<p\b[^>]*>/gi, '') // Strip <p> and <p ...> completely
+    .replace(/<([^>]+)>/g, (match, tag) => {
+       const lower = tag.toLowerCase().split(' ')[0];
+       if (['b', '/b', 'strong', '/strong', 'i', '/i', 'em', '/em', 'u', '/u', 'ins', '/ins', 's', '/s', 'strike', '/strike', 'del', '/del', 'a', '/a', 'code', '/code', 'pre', '/pre'].includes(lower)) {
+         return match;
+       }
+       return ''; // strip all other tags
+    });
+}
+
 export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null, type?: string | null, reply_markup?: any }) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -6,8 +21,9 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
   }
   
   try {
+    const sanitizedText = sanitizeTgHtml(text);
     const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
-    const finalMessage = `${text}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
+    const finalMessage = `${sanitizedText}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
 
     if (options?.lat && options?.lon) {
       const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;

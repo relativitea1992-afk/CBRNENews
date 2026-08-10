@@ -559,26 +559,10 @@ ${clusterTimelineContext || 'No ongoing clustered threats.'}`,
         });
       }
 
-      const sanitizeTgHtml = (str: string) => {
-        if (!str) return '';
-        return String(str)
-          .replace(/<br\s*\/?>/gi, '\n')
-          .replace(/<\/p>/gi, '\n')
-          .replace(/<p>/gi, '')
-          .replace(/<([^>]+)>/g, (match, tag) => {
-             // allow only supported tags in Telegram HTML
-             const lower = tag.toLowerCase().split(' ')[0];
-             if (['b', '/b', 'i', '/i', 'u', '/u', 's', '/s', 'a', '/a', 'code', '/code', 'pre', '/pre'].includes(lower)) {
-               return match;
-             }
-             return ''; // strip all other tags
-          });
-      };
-
       geminiAssessmentHtml = `
-1. <b>Detailed Assessment:</b> ${sanitizeTgHtml(assessmentResult.assessment)}
-2. <b>General Security Posture:</b> ${sanitizeTgHtml(assessmentResult.generalPosture)}
-3. <b>Advisory:</b> ${sanitizeTgHtml(assessmentResult.advisory)}`;
+1. <b>Detailed Assessment:</b> ${assessmentResult.assessment || ''}
+2. <b>General Security Posture:</b> ${assessmentResult.generalPosture || ''}
+3. <b>Advisory:</b> ${assessmentResult.advisory || ''}`;
 
       const selectionTokenStr = geminiSelection.usageMetadata?.totalTokenCount 
         ? ` (${geminiSelection.modelUsed}, Tokens: ${geminiSelection.usageMetadata.totalTokenCount} [In: ${geminiSelection.usageMetadata.promptTokenCount}, Out: ${geminiSelection.usageMetadata.candidatesTokenCount}])`
