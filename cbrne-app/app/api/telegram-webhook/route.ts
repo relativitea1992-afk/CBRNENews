@@ -169,9 +169,16 @@ export async function POST(request: NextRequest) {
                 triagingTokens.total += tot; triagingTokens.prompt += prm; triagingTokens.candidate += cnd;
                 
                 const models = modelString.split(',').map(s => s.trim());
-                const modelsStr = models.join(' + ');
-                if (!modelsUsage[modelsStr]) modelsUsage[modelsStr] = { total: 0, prompt: 0, candidate: 0 };
-                modelsUsage[modelsStr].total += tot; modelsUsage[modelsStr].prompt += prm; modelsUsage[modelsStr].candidate += cnd;
+                const splitTot = Math.round(tot / models.length);
+                const splitPrm = Math.round(prm / models.length);
+                const splitCnd = Math.round(cnd / models.length);
+                
+                for (const mdl of models) {
+                  if (!modelsUsage[mdl]) modelsUsage[mdl] = { total: 0, prompt: 0, candidate: 0 };
+                  modelsUsage[mdl].total += splitTot;
+                  modelsUsage[mdl].prompt += splitPrm;
+                  modelsUsage[mdl].candidate += splitCnd;
+                }
               }
             } else if (log.jobName === 'hourly-report') {
               hourlyReportRuns++;
