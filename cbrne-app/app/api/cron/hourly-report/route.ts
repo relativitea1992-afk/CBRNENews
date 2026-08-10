@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { generateHourlyReport } from '@/lib/report-generator';
+import { sendTelegramMessage } from '@/lib/telegram';
+import { geminiGenerate, checkAllModels } from '@/lib/gemini-client';
 
 export const maxDuration = 300; // Allow up to 5 minutes for AI processing
 export const preferredRegion = 'sin1';

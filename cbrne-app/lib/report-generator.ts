@@ -620,12 +620,15 @@ ${clusterTimelineContext || 'No ongoing clustered threats.'}`,
     threatSection += `🗞️ <b>ST RSS:</b> <i>No headlines available</i>\n`;
   }
 
-  // 8. Construct the Hourly Report Message
-  const reportMsg = `📊 <b>SYSTEM HOURLY REPORT</b> 📊
+  // 8. Construct the Hourly Report Messages (Split to bypass 4096 char limit)
+  const reportMsgPart1 = `📊 <b>SYSTEM HOURLY REPORT (Part 1/2)</b> 📊
 
 <b>News Monitoring Cron Job</b>
 ${newsStatusMsg}
-${threatSection}
+${threatSection}`;
+
+  const reportMsgPart2 = `📊 <b>SYSTEM HOURLY REPORT (Part 2/2)</b> 📊
+
 <b>System Linkages & APIs</b>
 <b>Gemini AI Engine:</b>
 ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
@@ -635,15 +638,22 @@ ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 <b>Supabase Link:</b> ${supabaseStatus}
 
 <i>Report generated automatically.</i>`;
+
   let egressBytes = 0;
-  // 6. Send to Telegram
+  // 6. Send to Telegram sequentially
   if (process.env.TELEGRAM_CHAT_ID) {
     let telegramPayloadSize = 0;
     try {
-      const payloadStr = JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: reportMsg });
-      telegramPayloadSize = Buffer.byteLength(payloadStr, 'utf8');
+      const payloadStr1 = JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: reportMsgPart1 });
+      const payloadStr2 = JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: reportMsgPart2 });
+      telegramPayloadSize = Buffer.byteLength(payloadStr1, 'utf8') + Buffer.byteLength(payloadStr2, 'utf8');
     } catch(e) {}
-    await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID, reportMsg);
+    
+    // Send Part 1
+    await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID, reportMsgPart1);
+    // Send Part 2
+    await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID, reportMsgPart2);
+    
     egressBytes += telegramPayloadSize;
   }
 
