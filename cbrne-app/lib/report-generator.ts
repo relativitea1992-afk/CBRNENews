@@ -598,7 +598,7 @@ ${newsContent}`,
       const geminiAssessmentResponse = await geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds, as well as timelines of ongoing active threat events.
-Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles. Ensure all dates/times mentioned in the timeline are in a clear, human-readable format (e.g. "Aug 9, 12:55 PM"). Do not output raw UTC timestamps.
+Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. ONLY include detailed analysis for relevant threats (CBRNE + Haze / Air Quality / Odour). If an article is NOT a relevant threat (e.g., standard accidents, generic crime, kidnappings, general infrastructure faults), provide a highly concise 1-sentence summary and explicitly state why it is NOT a threat. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles. Ensure all dates/times mentioned in the timeline are in a clear, human-readable format (e.g. "Aug 9, 12:55 PM"). Do not output raw UTC timestamps.
 Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
 Task 3: Provide an actionable advisory based strictly on the assessment (or "None").
 
