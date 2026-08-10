@@ -372,7 +372,7 @@ export async function generateHourlyReport() {
     
     let combinedMsg = '';
     if (combinedDown.length > 0) {
-        combinedMsg = `\n  • Both Wind Sensors Down: ${combinedDown.join(', ')}`;
+        combinedMsg = `\n  • Down for both wind speed and wind direction: ${combinedDown.join(', ')}`;
     }
 
     const pmMissingStr = pmStats.missing.map((m: any) => `${m.name} since ${m.downSince}`);
