@@ -445,7 +445,7 @@ export async function POST(request: NextRequest) {
       } else if (text.startsWith('/test')) {
         await sendTrackedMessage(chatId, "⏳ <b>Generating test report...</b> This may take a few seconds.");
         try {
-          const { generateHourlyReport } = await import('../cron/hourly-report/route');
+          const { generateHourlyReport } = await import('@/lib/report-generator');
           await generateHourlyReport();
         } catch (e: any) {
           console.error('Error generating test hourly report:', e);
