@@ -114,8 +114,9 @@ ${articleText}
 
     if (closestStation) {
       const readingsLen = speedData.data?.readings?.length || 1;
-      const latestIdx = readingsLen - 1;
-      const historicalIdx = Math.max(0, readingsLen - 13);
+      const latestIdx = 0;
+      // Wind readings come every ~1 min; index 60 ≈ 1 hour ago
+      const historicalIdx = Math.min(readingsLen - 1, 60);
       
       const latestSpeedReadings = speedData.data?.readings?.[latestIdx]?.data || [];
       const historicalSpeedReadings = speedData.data?.readings?.[historicalIdx]?.data || [];
@@ -144,12 +145,59 @@ ${articleText}
       const latestStData = processSingleStation(closestStation.id, closestStation, latestSpeedReadings, latestDirReadings);
       const histStData = processSingleStation(closestStation.id, closestStation, historicalSpeedReadings, historicalDirReadings);
 
+      // Build past-1hr statistical summary for the closest station
+      let pastHourSummary = '';
+      const hourReadingsCount = Math.min(readingsLen, 61);
+      const speeds: number[] = [];
+      const windDirections: number[] = [];
+      for (let i = 0; i < hourReadingsCount; i++) {
+        const spdData = speedData.data?.readings?.[i]?.data || [];
+        const dirDataArr = dirData.data?.readings?.[i]?.data || [];
+        const spdReading = spdData.find((s: any) => s.stationId === closestStation.id);
+        const dirReading = dirDataArr.find((d: any) => d.stationId === closestStation.id);
+        if (spdReading && typeof spdReading.value === 'number') speeds.push(spdReading.value * 1.852);
+        if (dirReading && typeof dirReading.value === 'number') windDirections.push(dirReading.value);
+      }
+      if (speeds.length > 1) {
+        const minSpd = Math.min(...speeds).toFixed(1);
+        const maxSpd = Math.max(...speeds).toFixed(1);
+        const avgSpd = (speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(1);
+        pastHourSummary += `\nPAST 1-HOUR WIND SPEED STATS (${speeds.length} readings):\nMin: ${minSpd} km/h | Max: ${maxSpd} km/h | Avg: ${avgSpd} km/h`;
+        
+        const mid = Math.floor(speeds.length / 2);
+        const recentAvg = speeds.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
+        const olderAvg = speeds.slice(mid).reduce((a, b) => a + b, 0) / (speeds.length - mid);
+        const spdDiff = recentAvg - olderAvg;
+        if (Math.abs(spdDiff) > 0.5) {
+          pastHourSummary += `\nSpeed Trend: ${spdDiff > 0 ? 'Increasing' : 'Decreasing'} (recent avg ${recentAvg.toFixed(1)} vs older avg ${olderAvg.toFixed(1)} km/h)`;
+        } else {
+          pastHourSummary += `\nSpeed Trend: Stable`;
+        }
+      }
+      if (windDirections.length > 1) {
+        const dirCounts: Record<string, number> = {};
+        windDirections.forEach(d => {
+          const label = getBlowingTowards(d);
+          dirCounts[label] = (dirCounts[label] || 0) + 1;
+        });
+        const sorted = Object.entries(dirCounts).sort((a, b) => b[1] - a[1]);
+        const predominant = sorted[0][0];
+        const consistency = ((sorted[0][1] / windDirections.length) * 100).toFixed(0);
+        pastHourSummary += `\nPredominant Wind Direction (past 1hr): Blowing towards ${predominant} (${consistency}% of readings)`;
+        if (sorted.length > 1) {
+          pastHourSummary += ` | Secondary: towards ${sorted[1][0]} (${((sorted[1][1] / windDirections.length) * 100).toFixed(0)}%)`;
+        }
+      }
+
       if (latestStData) {
         windContext = `\n\nMATHEMATICALLY CLOSEST WEATHER STATION DATA:\nTimestamp: ${latestTimestamp}\n${latestStData}\n`;
         if (histStData) {
-          windContext += `\nHISTORICAL TREND DATA FOR THIS STATION (~25-60 mins ago):\nTimestamp: ${historicalTimestamp}\n${histStData}\n`;
+          windContext += `\nHISTORICAL TREND DATA FOR THIS STATION (~1 hour ago):\nTimestamp: ${historicalTimestamp}\n${histStData}\n`;
         }
-        windContext += `\nPlease use ONLY this station's wind data to model and project the output for (1) the next 30 mins and (2) next 1 hour. Also, perform analysis considering the historical trend data to adjust the confidence of your wind speed and direction projection. Provide the actual impacted area via township in Singapore.`;
+        if (pastHourSummary) {
+          windContext += `\n${pastHourSummary}\n`;
+        }
+        windContext += `\nPlease use ONLY this station's wind data to model and project the output for (1) the next 30 mins and (2) next 1 hour. Also, perform analysis considering the historical trend data AND the past 1-hour statistical summary (min/max/avg speed, speed trend, predominant direction consistency) to adjust the confidence of your wind speed and direction projection. Provide the actual impacted area via township in Singapore.`;
       }
     }
   }
@@ -157,8 +205,8 @@ ${articleText}
   // Extract PM2.5 Data if available
   if (pm25Data && pm25Data.data && pm25Data.data.items && pm25Data.data.items.length > 0) {
     const pmItems = pm25Data.data.items;
-    const latestPm = pmItems[pmItems.length - 1];
-    const histPm = pmItems.length > 1 ? pmItems[pmItems.length - 2] : null;
+    const latestPm = pmItems[0];
+    const histPm = pmItems.length > 1 ? pmItems[1] : null;
 
     windContext += `\n\nREGIONAL PM2.5 AIR QUALITY DATA:\nTimestamp: ${latestPm.timestamp}\nReadings: ${JSON.stringify(latestPm.readings?.pm25_one_hourly || {})}\n`;
     if (histPm) {
@@ -167,6 +215,7 @@ ${articleText}
     windContext += `\nIf this is a haze or air quality incident, explicitly incorporate these PM2.5 readings into your threat assessment. Highlight specific regions (North, South, East, West, Central) that currently have unhealthy or high levels of PM2.5. IMPORTANT RULE: For Haze / Air Quality threats, ONLY perform and include the "Wind Projection" section if there is EXACTLY ONE specific region with high/unhealthy PM2.5 levels. If there are multiple regions with high/unhealthy PM2.5, or if no regions are high/unhealthy, completely OMIT the Wind Projection section from your advisory. 
 Additionally, for Haze/Air Quality threats, you MUST state the PM2.5 reference bands in your advisory (e.g., under Risk) so the user understands the severity: Normal (0-55), Elevated (56-150), High (151-250), Very High (>250).`;
   }
+
   // Second LLM Pass
   const prompt2 = `
 You are a CBRNE (Chemical, Biological, Radiological, Nuclear, and Explosives) threat analyst for Singapore.
