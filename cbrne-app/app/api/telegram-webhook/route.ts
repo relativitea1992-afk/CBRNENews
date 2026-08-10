@@ -464,7 +464,7 @@ export async function POST(request: NextRequest) {
         await sendTrackedMessage(chatId, `🧹 <b>Alerts Cleared:</b> ${deleted.count} active threat(s) have been removed from the dashboard.`);
       } else if (text.startsWith('/snapshot')) {
         const dashboardBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
-        const dashboardUrl = `${dashboardBaseUrl}?snapshot=true`;
+        const dashboardUrl = dashboardBaseUrl;
         const microlinkUrl = `https://api.microlink.io?url=${encodeURIComponent(dashboardUrl)}&screenshot=true&meta=false&embed=screenshot.url&waitUntil=networkidle0&delay=5000&adblock=false&force=true`;
         
         await sendTrackedMessage(chatId, "📸 <b>Taking snapshot of the live dashboard...</b>");
