@@ -586,6 +586,7 @@ ${newsContent}`,
           try {
              const extracted = await extract(url);
              if (extracted && extracted.content) {
+                ingressBytes += Buffer.byteLength(extracted.content, 'utf8');
                 const clean = extracted.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').substring(0, 4000);
                 fullTextContext += `[URL: ${url}]\n${clean}\n\n`;
              }
