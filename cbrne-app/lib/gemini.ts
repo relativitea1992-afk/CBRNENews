@@ -10,6 +10,8 @@ export interface TriageResult {
   advisory?: string;
   modelUsed?: string;
   usageMetadata?: any;
+  pm25Readings?: Record<string, number>;
+  previousPm25Readings?: Record<string, number>;
 }
 
 export async function triageNewsArticle(articleText: string): Promise<TriageResult | null> {
@@ -72,7 +74,7 @@ ${articleText}
   }
 
   if (!result1.isRelevant) {
-    return { ...result1, headline: '', summary: '', type: 'Unknown', usageMetadata: metadata1, modelUsed: model1 };
+    return { ...result1, headline: '', summary: '', type: 'Unknown', usageMetadata: metadata1, modelUsed: model1, pm25Readings: {}, previousPm25Readings: {} };
   }
 
   // Calculate closest station and extract environmental data
@@ -272,10 +274,14 @@ IMPORTANT RULES FOR YOUR ADVISORY:
   }
 
   // Extract PM2.5 Data if available
+  let pm25Readings: Record<string, number> = {};
+  let previousPm25Readings: Record<string, number> = {};
   if (pm25Data && pm25Data.data && pm25Data.data.items && pm25Data.data.items.length > 0) {
     const pmItems = pm25Data.data.items;
     const latestPm = pmItems[0];
     const histPm = pmItems.length > 1 ? pmItems[1] : null;
+    pm25Readings = latestPm?.readings?.pm25_one_hourly || {};
+    if (histPm) previousPm25Readings = histPm?.readings?.pm25_one_hourly || {};
 
     windContext += `\n\nREGIONAL PM2.5 AIR QUALITY DATA:\nTimestamp: ${latestPm.timestamp}\nReadings: ${JSON.stringify(latestPm.readings?.pm25_one_hourly || {})}\n`;
     if (histPm) {
@@ -348,7 +354,9 @@ ${articleText}
         type: result2.type,
         advisory: result2.advisory,
         modelUsed: response2.modelUsed || model1,
-        usageMetadata: combinedUsage
+        usageMetadata: combinedUsage,
+        pm25Readings,
+        previousPm25Readings
       };
     }
   } catch (error) {

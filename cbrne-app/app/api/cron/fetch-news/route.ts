@@ -241,6 +241,37 @@ export async function GET(request: Request) {
         // Send Telegram Alert
         const googleMapsLink = triage.lat && triage.lng ? `\n<b>Location:</b> <a href="https://www.google.com/maps/search/?api=1&query=${triage.lat},${triage.lng}">View on Google Maps</a>` : '';
 
+        // Build PM2.5 section for Haze/Air Quality threats
+        let pm25Section = '';
+        if (/haze|air quality/i.test(triage.type) && triage.pm25Readings && Object.keys(triage.pm25Readings).length > 0) {
+          const liveTimeStr = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+          const regions = ['north', 'south', 'east', 'west', 'central'];
+          const row1 = regions.slice(0, 3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${triage.pm25Readings![r] ?? 'N/A'}`).join(' | ');
+          const row2 = regions.slice(3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${triage.pm25Readings![r] ?? 'N/A'}`).join(' | ');
+          pm25Section += `\n🌫️ <b>Live PM2.5 Readings (${liveTimeStr}):</b>\n  ${row1}\n  ${row2}\n`;
+          
+          const currentVals = Object.values(triage.pm25Readings).filter(v => typeof v === 'number');
+          const prevVals = triage.previousPm25Readings ? Object.values(triage.previousPm25Readings).filter(v => typeof v === 'number') : [];
+          
+          if (currentVals.length > 0) {
+            const min = Math.min(...currentVals);
+            const max = Math.max(...currentVals);
+            const avg = Math.round(currentVals.reduce((a, b) => a + b, 0) / currentVals.length);
+            
+            let trendStr = '';
+            if (prevVals.length > 0) {
+              const prevAvg = Math.round(prevVals.reduce((a, b) => a + b, 0) / prevVals.length);
+              if (avg > prevAvg) trendStr = ` (⬆️ +${avg - prevAvg} from last hr)`;
+              else if (avg < prevAvg) trendStr = ` (⬇️ ${avg - prevAvg} from last hr)`;
+              else trendStr = ` (➖ Unchanged)`;
+            }
+            
+            pm25Section += `  <i>Stats: Min ${min} | Max ${max} | Avg ${avg}${trendStr}</i>\n`;
+          }
+          
+          pm25Section += `  <i>Ref: Normal (0-55) · Elevated (56-150) · High (151-250) · Very High (&gt;250)</i>\n`;
+        }
+
         const alertMsg = `🚨 <b>NEW THREAT DETECTED</b> 🚨
         
 <b>Headline:</b> ${escapeHtml(triage.headline)}
@@ -250,7 +281,7 @@ export async function GET(request: Request) {
 <b>Threat Assessment:</b>
 ${linkifyCoordinates(escapeHtml(triage.summary))}
 
-${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.advisory))}\n\n` : ''}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}${tokenConsumptionStr}
+${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.advisory))}\n\n` : ''}${pm25Section}<b>Model Used:</b> ${escapeHtml(triage.modelUsed || 'Unknown')}${tokenConsumptionStr}
 <b>Link:</b> ${escapeHtml(article.url)}`;
         let telegramPayloadSize = 0;
         try {
