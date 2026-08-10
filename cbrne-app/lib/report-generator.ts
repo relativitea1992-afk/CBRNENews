@@ -611,12 +611,17 @@ ${newsContent}`,
       }));
 
       // 3. Run Gemini Assessment on Full Text
+      let pm25Context = '';
+      if (Object.keys(pm25Readings).length > 0) {
+        pm25Context = `\nLive PM2.5 Readings (Singapore):\n` + Object.entries(pm25Readings).map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`).join(' | ') + `\n`;
+      }
+
       const geminiAssessmentResponse = await geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds, as well as timelines of ongoing active threat events.
 Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. ONLY include detailed analysis for relevant threats (CBRNE + Haze / Air Quality / Odour). If ALL articles are non-threats (e.g., standard accidents, generic crime, kidnappings, general infrastructure faults), do NOT list them individually; instead, provide a single consolidated sentence stating that all recent articles were reviewed and no CBRNE/environmental threats were detected. If there is a mix, provide detailed analysis for the relevant threats and consolidate the non-threats into one brief sentence. YOU MUST USE EXACTLY TWO HTML LINE BREAKS (<br><br>) after this consolidated sentence before beginning the next section. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles. Ensure all dates/times mentioned in the timeline are in a clear, human-readable format (e.g. "Aug 9, 12:55 PM"). Do not output raw UTC timestamps.
 Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
-Task 3: Provide an actionable advisory based strictly on the assessment (or "None").
+Task 3: Provide an actionable advisory based strictly on the assessment (or "None"). If there are live PM2.5 readings provided, factor them into the advisory (e.g. if high, advise N95 masks or staying indoors).
 
 Output ONLY a valid raw JSON object (without markdown blocks) in the following structure:
 {
@@ -631,7 +636,8 @@ New Articles (Full Text):
 ${fullTextContext || newsContent}
 
 Active Threat Timelines:
-${clusterTimelineContext || 'No ongoing clustered threats.'}`,
+${clusterTimelineContext || 'No ongoing clustered threats.'}
+${pm25Context}`,
           config: { responseMimeType: "application/json" }
       });
 
