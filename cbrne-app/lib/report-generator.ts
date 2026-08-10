@@ -258,43 +258,58 @@ export async function generateHourlyReport() {
     const [speedData, dirData, pm25Data] = envDataPromise;
 
     const extractStationStatus = (data: any, expectedTotal: number = 17) => {
-      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: expectedTotal, active: 0, missing: ['ALL (API data unavailable)'] };
+      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: expectedTotal, active: 0, missing: [] };
       const stations = data.data.stations;
       const readings = data.data.readings;
       const total = Math.max(stations.length, expectedTotal);
       
-      if (readings.length === 0) return { total, active: 0, missing: ['ALL since start of day'] };
+      if (readings.length === 0) return { total, active: 0, missing: stations.map((s: any) => ({ name: s.name, downSince: 'start of day' })) };
 
-      const latestReading = readings[0];
-      const readingData = latestReading?.data || [];
-      const activeStationIds = new Set(readingData.map((d: any) => d.stationId));
+      const missingInfo: any[] = [];
+      let activeCount = 0;
       
-      const missingStations = stations.filter((s: any) => !activeStationIds.has(s.id));
-      
-      const missingInfo = missingStations.map((station: any) => {
-        let downSince = latestReading.timestamp;
+      const latestApiTime = new Date(readings[0].timestamp).getTime();
+
+      for (const station of stations) {
+        let lastSeenIndex = -1;
         for (let i = 0; i < readings.length; i++) {
             const rData = readings[i].data || [];
             if (rData.some((d: any) => d.stationId === station.id)) {
-                if (i - 1 >= 0) downSince = readings[i - 1].timestamp;
+                lastSeenIndex = i;
                 break;
-            } else if (i === readings.length - 1) {
-                downSince = 'start of day';
             }
         }
         
-        let timeStr = downSince;
-        if (downSince.includes('T')) {
-            timeStr = downSince.split('T')[1].substring(0, 5);
+        if (lastSeenIndex === -1) {
+            missingInfo.push({ name: station.name, downSince: 'start of day' });
+        } else {
+            const lastSeenTime = new Date(readings[lastSeenIndex].timestamp).getTime();
+            const delayMinutes = (latestApiTime - lastSeenTime) / (1000 * 60);
+            
+            // 15-minute grace period for delayed sensor updates
+            if (delayMinutes > 15) {
+                // Determine when it first went missing
+                let downSince = readings[0].timestamp;
+                if (lastSeenIndex - 1 >= 0) {
+                    downSince = readings[lastSeenIndex - 1].timestamp;
+                }
+                
+                let timeStr = downSince;
+                if (downSince.includes('T')) {
+                    timeStr = downSince.split('T')[1].substring(0, 5);
+                }
+                missingInfo.push({ name: station.name, downSince: timeStr });
+            } else {
+                activeCount++;
+            }
         }
-        return `${station.name} since ${timeStr}`;
-      });
+      }
 
-      return { total, active: readingData.length, missing: missingInfo };
+      return { total, active: activeCount, missing: missingInfo };
     };
     
     const extractPm25Status = (data: any) => {
-      if (!data || !data.data || !data.data.items || data.data.items.length === 0) return { total: 5, active: 0, missing: ['ALL (API data unavailable)'] };
+      if (!data || !data.data || !data.data.items || data.data.items.length === 0) return { total: 5, active: 0, missing: [{name: 'ALL', downSince: 'API data unavailable'}] };
       const items = data.data.items;
       const latestReading = items[0];
       const keys = Object.keys(latestReading?.readings?.pm25_one_hourly || {});
@@ -319,7 +334,7 @@ export async function generateHourlyReport() {
         if (downSince.includes('T')) {
             timeStr = downSince.split('T')[1].substring(0, 5);
         }
-        return `${region} since ${timeStr}`;
+        return { name: region, downSince: timeStr };
       });
 
       return { total: 5, active, missing: missingInfo };
@@ -329,20 +344,42 @@ export async function generateHourlyReport() {
     const dirStats = extractStationStatus(dirData, 17);
     const pmStats = extractPm25Status(pm25Data);
 
-    const formatMsg = (name: string, stats: {total: number, active: number, missing: string[]}, unit: string) => {
-      if (!stats.total) return `${name}: FAILED`;
-      let msg = `${name}: ${stats.active}/${stats.total} ${unit} OK`;
-      if (stats.missing.length > 0) {
-        msg += ` (Down: ${stats.missing.join(', ')})`;
-      }
-      return msg;
-    };
+    let combinedDown: string[] = [];
+    let speedOnlyDown: string[] = [];
+    let dirOnlyDown: string[] = [];
 
-    const windSpeedMsg = formatMsg('Wind Speed', speedStats, 'weather stations');
-    const windDirMsg = formatMsg('Wind Direction', dirStats, 'weather stations');
-    const pm25Msg = formatMsg('PM2.5', pmStats, 'regions');
+    const dirMissingMap = new Map(dirStats.missing.map((m: any) => [m.name, m.downSince]));
 
-    govSgStatus = `✅ ONLINE (${latency}ms)\n  • ${windSpeedMsg}\n  • ${windDirMsg}\n  • ${pm25Msg}`;
+    for (const s of speedStats.missing) {
+        if (dirMissingMap.has(s.name)) {
+            const dSince = dirMissingMap.get(s.name);
+            const timeStr = (s.downSince === dSince) ? s.downSince : s.downSince;
+            combinedDown.push(`${s.name} since ${timeStr}`);
+            dirMissingMap.delete(s.name);
+        } else {
+            speedOnlyDown.push(`${s.name} since ${s.downSince}`);
+        }
+    }
+    for (const [name, downSince] of Array.from(dirMissingMap.entries())) {
+        dirOnlyDown.push(`${name} since ${downSince}`);
+    }
+
+    let windSpeedMsg = `Wind Speed: ${speedStats.active}/${speedStats.total} OK`;
+    if (speedOnlyDown.length > 0) windSpeedMsg += ` (Down: ${speedOnlyDown.join(', ')})`;
+    
+    let windDirMsg = `Wind Direction: ${dirStats.active}/${dirStats.total} OK`;
+    if (dirOnlyDown.length > 0) windDirMsg += ` (Down: ${dirOnlyDown.join(', ')})`;
+    
+    let combinedMsg = '';
+    if (combinedDown.length > 0) {
+        combinedMsg = `\n  • Both Wind Sensors Down: ${combinedDown.join(', ')}`;
+    }
+
+    const pmMissingStr = pmStats.missing.map((m: any) => `${m.name} since ${m.downSince}`);
+    let pm25Msg = `PM2.5: ${pmStats.active}/${pmStats.total} OK`;
+    if (pmMissingStr.length > 0) pm25Msg += ` (Down: ${pmMissingStr.join(', ')})`;
+
+    govSgStatus = `✅ ONLINE (${latency}ms)\n  • ${windSpeedMsg}\n  • ${windDirMsg}${combinedMsg}\n  • ${pm25Msg}`;
 
     // Extract raw PM2.5 readings for use in threats section
     if (pm25Data?.data?.items?.length > 0) {
