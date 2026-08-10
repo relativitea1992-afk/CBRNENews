@@ -156,8 +156,13 @@ export async function GET(request: Request) {
 
       // Filter unread articles
       const unreadArticles = [];
+      const seenUrls = new Set<string>();
+      
       for (const article of articlesToProcess) {
         if (!article.url || !article.title) continue;
+        if (seenUrls.has(article.url)) continue;
+        seenUrls.add(article.url);
+        
         const existing = await prisma.incident.findUnique({ where: { sourceUrl: article.url } });
         if (!existing) unreadArticles.push(article);
       }
