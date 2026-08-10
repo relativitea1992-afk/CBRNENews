@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { sendTelegramMessage } from '@/lib/telegram';
 import { geminiGenerate, checkAllModels } from '@/lib/gemini-client';
+import { extract } from '@extractus/article-extractor';
 
 export const maxDuration = 300;
 export const preferredRegion = 'sin1';
@@ -91,6 +92,7 @@ export async function generateHourlyReport() {
   // 3. Check NewsAPI Linkage + extract multiple articles with pre-filter
   let newsApiStatus = 'Unknown';
   let newsApiTopContent = '';
+  const allArticles: { source: string, headline: string, url: string }[] = [];
   const RELEVANCE_KEYWORDS = /singapore|johor|batam|southeast asia|cbrne|chemical|biological|radiological|nuclear|explosive|haze|air quality|smog|odour|toxic|leak|pollution|psi|pm2\.5/i;
   try {
     const newsApiKey = process.env.NEWSAPI_KEY;
@@ -108,6 +110,7 @@ export async function generateHourlyReport() {
           for (const article of data.articles) {
             const text = [article.title, article.description, article.content].filter(Boolean).join(' ');
             if (RELEVANCE_KEYWORDS.test(text)) {
+              allArticles.push({ source: 'NewsAPI', headline: article.title, url: article.url });
               newsApiTopContent += `[NewsAPI] ${article.title}. ${article.description || ''}\n\n`;
             }
           }
@@ -155,6 +158,13 @@ export async function generateHourlyReport() {
           if (!cnaHeadlines.has(title)) {
             cnaHeadlines.add(title);
             uniqueHeadlinesWithSource.push({ source: feed.name, headline: title });
+
+            let url = '';
+            const linkMatch = xml.match(new RegExp(`<item[^>]*>[\\s\\S]*?<title>[^<]*${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*<\\/title>[\\s\\S]*?<link>([\\s\\S]*?)<\\/link>`, 'i'));
+            if (linkMatch) {
+              url = linkMatch[1].replace(/^<!\\[CDATA\\[/, '').replace(/\\]\\]>$/, '').trim();
+            }
+            allArticles.push({ source: `CNA ${feed.name}`, headline: title, url });
 
             const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description>([\s\S]*?)<\/description>/i);
             if (descMatch) {
@@ -208,6 +218,13 @@ export async function generateHourlyReport() {
           if (!stHeadlines.has(title)) {
             stHeadlines.add(title);
             uniqueStHeadlinesWithSource.push({ source: feed.name, headline: title });
+
+            let url = '';
+            const linkMatch = xml.match(new RegExp(`<item[^>]*>[\\s\\S]*?<title>[^<]*${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*<\\/title>[\\s\\S]*?<link>([\\s\\S]*?)<\\/link>`, 'i'));
+            if (linkMatch) {
+              url = linkMatch[1].replace(/^<!\\[CDATA\\[/, '').replace(/\\]\\]>$/, '').trim();
+            }
+            allArticles.push({ source: `ST ${feed.name}`, headline: title, url });
 
             const descMatch = xml.match(/<item[^>]*>[\s\S]*?<description>([\s\S]*?)<\/description>/i);
             if (descMatch) {
@@ -525,9 +542,8 @@ export async function generateHourlyReport() {
         stTopContent ? `[Straits Times Articles]\n${stTopContent.trim()}` : '',
       ].filter(Boolean).join('\n\n');
       
-      // Parallelize the Gemini operations to stay within Vercel timeout constraints while keeping them separate
-      const [geminiSelection, geminiAssessmentResponse] = await Promise.all([
-        geminiGenerate({
+      // 1. Run Gemini Selection First
+      const geminiSelection = await geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds.
 Task: Review ALL sources — [NewsAPI Articles], [CNA Articles], and [Straits Times Articles]. For each source, select the 2 most relevant headlines (prioritizing CBRNE, Haze, Air Quality, and Odour). If there's no obvious relevance, just select the top 2 major news. If a source has no articles, return an empty array for it.
@@ -544,8 +560,42 @@ Output ONLY a valid raw JSON object (without markdown blocks) in the following s
 News Content:
 ${newsContent}`,
           config: { responseMimeType: "application/json" }
-        }),
-        geminiGenerate({
+      });
+
+      const selectionRaw = geminiSelection.text?.trim() || '{}';
+      const selectionMatch = selectionRaw.match(/\{[\s\S]*\}/);
+      const cleanSelectionJson = selectionMatch ? selectionMatch[0] : '{}';
+      const selectionResult = JSON.parse(cleanSelectionJson);
+
+      // 2. Extract Full Text for Selected Articles
+      const selectedUrls: string[] = [];
+      const addUrls = (arr: any[]) => {
+        if (arr && arr.length > 0) {
+          arr.forEach((item: any) => {
+             const matched = allArticles.find(a => a.headline.includes(item.headline) || item.headline.includes(a.headline));
+             if (matched && matched.url) selectedUrls.push(matched.url);
+          });
+        }
+      };
+      addUrls(selectionResult.newsApiTop2);
+      addUrls(selectionResult.cnaTop2);
+      addUrls(selectionResult.stTop2);
+
+      let fullTextContext = '';
+      await Promise.all(selectedUrls.map(async (url) => {
+          try {
+             const extracted = await extract(url);
+             if (extracted && extracted.content) {
+                const clean = extracted.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').substring(0, 4000);
+                fullTextContext += `[URL: ${url}]\n${clean}\n\n`;
+             }
+          } catch(e) {
+             console.error('Failed to extract:', url);
+          }
+      }));
+
+      // 3. Run Gemini Assessment on Full Text
+      const geminiAssessmentResponse = await geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds, as well as timelines of ongoing active threat events.
 Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles. Ensure all dates/times mentioned in the timeline are in a clear, human-readable format (e.g. "Aug 9, 12:55 PM"). Do not output raw UTC timestamps.
@@ -561,19 +611,13 @@ Output ONLY a valid raw JSON object (without markdown blocks) in the following s
 
 Note: In the HTML fields, you may use standard Telegram HTML tags like <b> for bolding. Do NOT use markdown (**). When using common widely known acronyms, use ONLY the acronym.
 
-New Articles:
-${newsContent}
+New Articles (Full Text):
+${fullTextContext || newsContent}
 
 Active Threat Timelines:
 ${clusterTimelineContext || 'No ongoing clustered threats.'}`,
           config: { responseMimeType: "application/json" }
-        })
-      ]);
-
-      const selectionRaw = geminiSelection.text?.trim() || '{}';
-      const selectionMatch = selectionRaw.match(/\{[\s\S]*\}/);
-      const cleanSelectionJson = selectionMatch ? selectionMatch[0] : '{}';
-      const selectionResult = JSON.parse(cleanSelectionJson);
+      });
 
       const assessmentRaw = geminiAssessmentResponse.text?.trim() || '{}';
       const assessmentMatch = assessmentRaw.match(/\{[\s\S]*\}/);
