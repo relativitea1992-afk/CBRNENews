@@ -306,6 +306,7 @@ export async function POST(request: NextRequest) {
           if (totalManual === 0) msg += `- No manual commands executed\n`;
           
           msg += `\n🧠 <b>AI Token Usage:</b>\n`;
+          msg += `Total Consumed: ${formatTokens(totalTokens)} [In: ${formatTokens(promptTokens)} | Out: ${formatTokens(candidateTokens)}]\n`;
           msg += `<b>By Model:</b>\n`;
           const sortedModels = Object.entries(modelsUsage).sort((a, b) => b[1].total - a[1].total);
           sortedModels.forEach(([mdl, usage]) => {
