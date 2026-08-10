@@ -14,13 +14,76 @@ export interface TriageResult {
   previousPm25Readings?: Record<string, number>;
 }
 
-export async function triageNewsArticle(articleText: string): Promise<TriageResult | null> {
+export interface BatchTriageResult {
+  index: number;
+  isRelevant: boolean;
+  lat: number | null;
+  lng: number | null;
+}
+
+export async function triageNewsBatch(articles: { title: string, content: string }[]): Promise<{ results: BatchTriageResult[], modelUsed: string, usageMetadata: any } | null> {
   if (!process.env.GEMINI_API_KEY) {
     console.warn('GEMINI_API_KEY is not set');
     return null;
   }
+  
+  if (articles.length === 0) return { results: [], modelUsed: 'Unknown', usageMetadata: null };
 
-  // 1. Fetch wind data concurrently with the first LLM pass
+  let articlesText = '';
+  articles.forEach((article, idx) => {
+    articlesText += `Article ${idx}:\nTitle: ${article.title}\nContent: ${article.content}\n\n`;
+  });
+
+  const prompt1 = `
+You are a CBRNE (Chemical, Biological, Radiological, Nuclear, and Explosives) threat analyst for Singapore.
+Analyze the following batch of news articles and determine if each represents a threat (including odour incidents, toxic smells, leaks, potential releases, haze, or poor air quality) that could impact mainland Singapore.
+Consider incidents in Singapore, or nearby border regions like Johor (e.g. Pasir Gudang), Batam, Riau that could cross borders via air/water.
+
+Return the result STRICTLY as a JSON array of objects.
+Each object MUST have the following fields:
+- "index" (number): The exact index of the article in the provided list.
+- "isRelevant" (boolean): true if it represents a relevant CBRNE/Odour/Haze threat to Singapore, false otherwise.
+- "lat" (number | null): Latitude of the incident location. Null if unknown or not relevant.
+- "lng" (number | null): Longitude of the incident location. Null if unknown or not relevant.
+
+Articles:
+"""
+${articlesText}
+"""
+`;
+
+  try {
+    const response1 = await geminiGenerate({
+      contents: prompt1,
+      config: { responseMimeType: 'application/json' }
+    });
+    
+    if (!response1 || !response1.text) return null;
+
+    let cleanText = response1.text.trim();
+    const firstBrace = cleanText.indexOf('[');
+    const lastBrace = cleanText.lastIndexOf(']');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+    }
+    const results = JSON.parse(cleanText) as BatchTriageResult[];
+    return {
+      results,
+      modelUsed: response1.modelUsed || 'Unknown',
+      usageMetadata: response1.usageMetadata
+    };
+  } catch (error) {
+    console.error('Gemini AI Triage Error (Batch Pass 1):', error);
+    return null;
+  }
+}
+
+export async function triageRelevantArticlePass2(
+  articleText: string, 
+  pass1Result: { lat: number | null, lng: number | null, modelUsed: string, usageMetadata: any }
+): Promise<TriageResult | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+
   const dateStr = new Date(Date.now() + 8*60*60*1000).toISOString().split('T')[0];
   const envDataPromise = Promise.all([
     fetch('https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=' + dateStr).then(res => res.json()),
@@ -30,52 +93,10 @@ export async function triageNewsArticle(articleText: string): Promise<TriageResu
     console.error('Failed to fetch environmental data:', e);
     return [null, null, null];
   });
-
-  // First LLM Pass: Extract location and relevance
-  const prompt1 = `
-You are a CBRNE (Chemical, Biological, Radiological, Nuclear, and Explosives) threat analyst for Singapore.
-Analyze the following news text and determine if it represents a threat (including odour incidents, toxic smells, leaks, potential releases, haze, or poor air quality) that could impact mainland Singapore.
-Consider incidents in Singapore, or nearby border regions like Johor (e.g. Pasir Gudang), Batam, Riau that could cross borders via air/water.
-
-Return the result strictly as a JSON object with the following fields:
-- "isRelevant" (boolean): true if it represents a relevant CBRNE/Odour/Haze threat to Singapore, false otherwise.
-- "lat" (number or null): Latitude of the incident location. Null if unknown.
-- "lng" (number or null): Longitude of the incident location. Null if unknown.
-
-News text:
-"""
-${articleText}
-"""
-`;
-
-  let result1: { isRelevant: boolean; lat: number | null; lng: number | null; };
-  let metadata1: any;
-  let model1: string = 'Unknown';
-  try {
-    const response1 = await geminiGenerate({
-      contents: prompt1,
-      config: { responseMimeType: 'application/json' }
-    });
-    
-    if (!response1 || !response1.text) return null;
-    
-    let cleanText = response1.text.trim();
-    const firstBrace = cleanText.indexOf('{');
-    const lastBrace = cleanText.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      cleanText = cleanText.substring(firstBrace, lastBrace + 1);
-    }
-    result1 = JSON.parse(cleanText);
-    metadata1 = response1.usageMetadata;
-    model1 = response1.modelUsed || 'Unknown';
-  } catch (error) {
-    console.error('Gemini AI Triage Error (Pass 1):', error);
-    return null;
-  }
-
-  if (!result1.isRelevant) {
-    return { ...result1, headline: '', summary: '', type: 'Unknown', usageMetadata: metadata1, modelUsed: model1, pm25Readings: {}, previousPm25Readings: {} };
-  }
+  
+  const result1 = { isRelevant: true, lat: pass1Result.lat, lng: pass1Result.lng };
+  let metadata1 = pass1Result.usageMetadata;
+  let model1 = pass1Result.modelUsed;
 
   // Calculate closest station and extract environmental data
   const [speedData, dirData, pm25Data] = await envDataPromise;

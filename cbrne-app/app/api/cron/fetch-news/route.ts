@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { after } from 'next/server';
 import Parser from 'rss-parser';
 import prisma from '@/lib/prisma';
-import { triageNewsArticle, clusterIncident } from '@/lib/gemini';
+import { triageNewsBatch, triageRelevantArticlePass2, clusterIncident } from '@/lib/gemini';
 import { sendTelegramMessage } from '@/lib/telegram';
 
 const parser = new Parser();
@@ -154,95 +154,135 @@ export async function GET(request: Request) {
       let totalCandidatesTokens = 0;
       let totalWordCount = 0;
 
-    for (const article of articlesToProcess) {
-      if (!article.url || !article.title) continue;
-
-      // Check if already processed to save Gemini calls
-      const existing = await prisma.incident.findUnique({ where: { sourceUrl: article.url } });
-      if (existing) continue;
-
-      const triage = await triageNewsArticle(`Title: ${article.title}\n\nContent: ${article.content}`);
-      
-      const wordsInArticle = (article.title?.split(/\s+/).length || 0) + (article.content?.split(/\s+/).length || 0);
-      totalWordCount += wordsInArticle;
-
-      processedCount++;
-      sourceCounts[article.source] = (sourceCounts[article.source] || 0) + 1;
-      if (triage && triage.modelUsed) {
-        modelsUsed.add(triage.modelUsed);
-      }
-      if (triage && triage.usageMetadata) {
-        totalPromptTokens += triage.usageMetadata.promptTokenCount || 0;
-        totalCandidatesTokens += triage.usageMetadata.candidatesTokenCount || 0;
+      // Filter unread articles
+      const unreadArticles = [];
+      for (const article of articlesToProcess) {
+        if (!article.url || !article.title) continue;
+        const existing = await prisma.incident.findUnique({ where: { sourceUrl: article.url } });
+        if (!existing) unreadArticles.push(article);
       }
 
-      let clusterId: string | undefined = undefined;
+      // Chunk into batches of 20
+      const chunkSize = 20;
+      const chunks = [];
+      for (let i = 0; i < unreadArticles.length; i += chunkSize) {
+        chunks.push(unreadArticles.slice(i, i + chunkSize));
+      }
 
-      if (triage && triage.isRelevant) {
-        // Find recent active threats to cluster with
-        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
-        const recentActiveThreats = await prisma.incident.findMany({
-          where: { isRelevant: true, createdAt: { gte: fortyEightHoursAgo } },
-          orderBy: { createdAt: 'desc' }
-        });
+      for (const chunk of chunks) {
+        const batchResult = await triageNewsBatch(chunk);
+        if (!batchResult) {
+          console.error('[fetch-news] AI triage batch failed');
+          continue;
+        }
+        
+        modelsUsed.add(batchResult.modelUsed);
+        if (batchResult.usageMetadata) {
+          totalPromptTokens += batchResult.usageMetadata.promptTokenCount || 0;
+          totalCandidatesTokens += batchResult.usageMetadata.candidatesTokenCount || 0;
+        }
 
-        if (recentActiveThreats.length > 0) {
-           const clusterResult = await clusterIncident(
-             triage.headline || article.title,
-             triage.summary || '',
-             triage.type || 'Unknown',
-             recentActiveThreats.map(t => ({ id: t.id, clusterId: t.clusterId, headline: t.headline, summary: t.summary, type: t.type }))
-           );
-           if (clusterResult) {
-             if (clusterResult.clusterId) clusterId = clusterResult.clusterId;
-             if (clusterResult.usageMetadata) {
-               totalPromptTokens += clusterResult.usageMetadata.promptTokenCount || 0;
-               totalCandidatesTokens += clusterResult.usageMetadata.candidatesTokenCount || 0;
+        // Process each result in the chunk
+        for (const res of batchResult.results) {
+          const article = chunk[res.index];
+          if (!article) continue;
+
+          const wordsInArticle = (article.title?.split(/\s+/).length || 0) + (article.content?.split(/\s+/).length || 0);
+          totalWordCount += wordsInArticle;
+          processedCount++;
+          sourceCounts[article.source] = (sourceCounts[article.source] || 0) + 1;
+
+          let triage: any = {
+            isRelevant: false,
+            headline: article.title,
+            summary: 'No relevant threats detected.',
+            lat: res.lat || null,
+            lng: res.lng || null,
+            type: 'Unknown',
+            modelUsed: batchResult.modelUsed
+          };
+
+          if (res.isRelevant) {
+             const pass2Result = await triageRelevantArticlePass2(`Title: ${article.title}\n\nContent: ${article.content}`, {
+               lat: res.lat,
+               lng: res.lng,
+               modelUsed: batchResult.modelUsed,
+               usageMetadata: batchResult.usageMetadata
+             });
+             
+             if (pass2Result) {
+               triage = pass2Result;
+               if (pass2Result.usageMetadata) {
+                 totalPromptTokens += pass2Result.usageMetadata.promptTokenCount || 0;
+                 totalCandidatesTokens += pass2Result.usageMetadata.candidatesTokenCount || 0;
+               }
              }
-           }
-        }
-      }
-
-      if (triage) {
-        // Save to DB (both threats and non-threats) to prevent reprocessing them next hour
-        const savedIncident = await prisma.incident.create({
-          data: {
-            headline: triage.headline || article.title,
-            summary: triage.summary || 'No relevant threats detected.',
-            sourceUrl: article.url,
-            sourceName: article.source,
-            publishedAt: article.publishedAt,
-            lat: triage.lat,
-            lng: triage.lng,
-            type: triage.type || 'Unknown',
-            advisory: triage.advisory,
-            modelUsed: triage.modelUsed || 'Unknown',
-            isRelevant: triage.isRelevant || false,
-            clusterId: clusterId
           }
-        });
-        
-        if (triage.isRelevant && !clusterId) {
-          // If no existing cluster matched, this incident becomes its own new cluster
-          await prisma.incident.update({
-             where: { id: savedIncident.id },
-             data: { clusterId: savedIncident.id }
+
+          let clusterId: string | undefined = undefined;
+
+          if (triage.isRelevant) {
+            // Find recent active threats to cluster with
+            const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+            const recentActiveThreats = await prisma.incident.findMany({
+              where: { isRelevant: true, createdAt: { gte: fortyEightHoursAgo } },
+              orderBy: { createdAt: 'desc' }
+            });
+
+            if (recentActiveThreats.length > 0) {
+               const clusterResult = await clusterIncident(
+                 triage.headline || article.title,
+                 triage.summary || '',
+                 triage.type || 'Unknown',
+                 recentActiveThreats.map(t => ({ id: t.id, clusterId: t.clusterId, headline: t.headline, summary: t.summary, type: t.type }))
+               );
+               if (clusterResult) {
+                 if (clusterResult.clusterId) clusterId = clusterResult.clusterId;
+                 if (clusterResult.usageMetadata) {
+                   totalPromptTokens += clusterResult.usageMetadata.promptTokenCount || 0;
+                   totalCandidatesTokens += clusterResult.usageMetadata.candidatesTokenCount || 0;
+                 }
+               }
+            }
+          }
+
+          // Save to DB
+          const savedIncident = await prisma.incident.create({
+            data: {
+              headline: triage.headline || article.title,
+              summary: triage.summary || 'No relevant threats detected.',
+              sourceUrl: article.url,
+              sourceName: article.source,
+              publishedAt: article.publishedAt,
+              lat: triage.lat,
+              lng: triage.lng,
+              type: triage.type || 'Unknown',
+              advisory: triage.advisory,
+              modelUsed: triage.modelUsed || 'Unknown',
+              isRelevant: triage.isRelevant || false,
+              clusterId: clusterId
+            }
           });
-        }
-      }
+          
+          if (triage.isRelevant && !clusterId) {
+            await prisma.incident.update({
+               where: { id: savedIncident.id },
+               data: { clusterId: savedIncident.id }
+            });
+          }
 
-      if (triage && triage.isRelevant) {
-        threatCount++;
-        
-        const tokenConsumptionStr = triage.usageMetadata 
-          ? `\n<b>Tokens Consumed:</b> ${triage.usageMetadata.totalTokenCount} [In: ${triage.usageMetadata.promptTokenCount}, Out: ${triage.usageMetadata.candidatesTokenCount}]`
-          : '';
+          if (triage.isRelevant) {
+            threatCount++;
+            
+            const tokenConsumptionStr = triage.usageMetadata 
+              ? `\n<b>Tokens Consumed:</b> ${triage.usageMetadata.totalTokenCount} [In: ${triage.usageMetadata.promptTokenCount}, Out: ${triage.usageMetadata.candidatesTokenCount}]`
+              : '';
 
-        // Send Telegram Alert
-        const googleMapsLink = triage.lat && triage.lng ? `\n<b>Location:</b> <a href="https://www.google.com/maps/search/?api=1&query=${triage.lat},${triage.lng}">View on Google Maps</a>` : '';
+            // Send Telegram Alert
+            const googleMapsLink = triage.lat && triage.lng ? `\n<b>Location:</b> <a href="https://www.google.com/maps/search/?api=1&query=${triage.lat},${triage.lng}">View on Google Maps</a>` : '';
 
-        // Build PM2.5 section for Haze/Air Quality threats
-        let pm25Section = '';
+            // Build PM2.5 section for Haze/Air Quality threats
+            let pm25Section = '';
         if (/haze|air quality/i.test(triage.type) && triage.pm25Readings && Object.keys(triage.pm25Readings).length > 0) {
           const liveTimeStr = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
           const regions = ['north', 'south', 'east', 'west', 'central'];
@@ -291,8 +331,9 @@ ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.ad
         
         await sendTelegramMessage(process.env.TELEGRAM_CHAT_ID!, alertMsg, { lat: triage.lat, lon: triage.lng, type: triage.type });
         egressBytes += telegramPayloadSize;
+          }
+        }
       }
-    }
 
     const sourceBreakdown = Object.entries(sourceCounts).map(([src, count]) => `${src}: ${count}`).join(', ');
     const breakdownStr = sourceBreakdown ? `${sourceBreakdown}` : 'No new articles';
