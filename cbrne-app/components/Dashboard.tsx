@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { DateTime } from 'luxon';
-import { Wind, FlaskConical, Biohazard, Radiation, Bomb, Trash2, Loader2 } from 'lucide-react';
+import { Wind, FlaskConical, Biohazard, Radiation, Bomb, Trash2, Loader2, CloudFog } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -36,6 +36,7 @@ export function StaticSnapshotMap({ incidents }: { incidents: Incident[] }) {
       else if (i.type === 'Biological') color = 'pm2grm';
       else if (i.type === 'Nuclear' || i.type === 'Radiological') color = 'pm2orm';
       else if (i.type === 'Explosive') color = 'pm2rdm';
+      else if (i.type === 'Haze / Air Quality') color = 'pm2bwm';
       return `${i.longitude},${i.latitude},${color}`;
     })
     .join('~');
@@ -69,6 +70,7 @@ const getTypeConfig = (type: string) => {
     case 'Nuclear':
     case 'Radiological': return { color: '#f97316', icon: <Radiation size={16} /> }; // orange
     case 'Explosive': return { color: '#dc2626', icon: <Bomb size={16} /> }; // red
+    case 'Haze / Air Quality': return { color: '#d97706', icon: <CloudFog size={16} /> }; // amber
     default: return { color: '#ef4444', icon: <Radiation size={16} /> };
   }
 };
@@ -184,6 +186,7 @@ export default function Dashboard({ incidents, isSnapshot = false }: { incidents
               <div className="flex items-center gap-2"><span style={{ color: '#22c55e' }}><Biohazard size={16} /></span><span>Biological</span></div>
               <div className="flex items-center gap-2"><span style={{ color: '#f97316' }}><Radiation size={16} /></span><span>Radiological/Nuclear</span></div>
               <div className="flex items-center gap-2"><span style={{ color: '#dc2626' }}><Bomb size={16} /></span><span>Explosive</span></div>
+              <div className="flex items-center gap-2"><span style={{ color: '#d97706' }}><CloudFog size={16} /></span><span>Haze / Air Quality</span></div>
             </div>
           </div>
         </section>

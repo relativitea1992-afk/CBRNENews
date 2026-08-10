@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { renderToString } from 'react-dom/server';
-import { Wind, FlaskConical, Biohazard, Radiation, Bomb } from 'lucide-react';
+import { Wind, FlaskConical, Biohazard, Radiation, Bomb, CloudFog } from 'lucide-react';
 
 type Incident = {
   id: string;
@@ -63,6 +63,7 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
         else if (i.type === 'Biological') color = 'pm2grm';
         else if (i.type === 'Nuclear' || i.type === 'Radiological') color = 'pm2orm';
         else if (i.type === 'Explosive') color = 'pm2rdm';
+        else if (i.type === 'Haze / Air Quality') color = 'pm2bwm';
         return `${i.longitude},${i.latitude},${color}`;
       })
       .join('~');
@@ -112,6 +113,7 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
         else if (incident.type === 'Biological') { color = '#22c55e'; IconComp = Biohazard; }
         else if (incident.type === 'Nuclear' || incident.type === 'Radiological') { color = '#f97316'; IconComp = Radiation; }
         else if (incident.type === 'Explosive') { color = '#dc2626'; IconComp = Bomb; }
+        else if (incident.type === 'Haze / Air Quality') { color = '#d97706'; IconComp = CloudFog; }
 
         const iconHtml = renderToString(
           <div style={{
