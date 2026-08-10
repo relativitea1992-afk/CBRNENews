@@ -641,9 +641,14 @@ ${clusterTimelineContext || 'No ongoing clustered threats.'}`,
       }
 
       geminiAssessmentHtml = `
-1. <b>Detailed Assessment:</b> ${assessmentResult.assessment || ''}
-2. <b>General Security Posture:</b> ${assessmentResult.generalPosture || ''}
-3. <b>Advisory:</b> ${assessmentResult.advisory || ''}`;
+1. <b>Detailed Assessment:</b>
+${assessmentResult.assessment || ''}
+
+2. <b>General Security Posture:</b>
+${assessmentResult.generalPosture || ''}
+
+3. <b>Advisory:</b>
+${assessmentResult.advisory || ''}`;
 
       const selectionTokenStr = geminiSelection.usageMetadata?.totalTokenCount 
         ? ` (${geminiSelection.modelUsed}, Tokens: ${geminiSelection.usageMetadata.totalTokenCount} [In: ${geminiSelection.usageMetadata.promptTokenCount}, Out: ${geminiSelection.usageMetadata.candidatesTokenCount}])`
