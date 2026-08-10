@@ -245,6 +245,7 @@ export async function generateHourlyReport() {
   // 5b. Check Gov.sg Environmental APIs
   let govSgStatus = 'Unknown';
   let pm25Readings: Record<string, number> = {};
+  let previousPm25Readings: Record<string, number> = {};
   try {
     const dateStr = new Date(Date.now() + 8*60*60*1000).toISOString().split('T')[0];
     const start = Date.now();
@@ -265,7 +266,7 @@ export async function generateHourlyReport() {
       
       if (readings.length === 0) return { total, active: 0, missing: ['ALL since start of day'] };
 
-      const latestReading = readings[readings.length - 1];
+      const latestReading = readings[0];
       const readingData = latestReading?.data || [];
       const activeStationIds = new Set(readingData.map((d: any) => d.stationId));
       
@@ -273,12 +274,12 @@ export async function generateHourlyReport() {
       
       const missingInfo = missingStations.map((station: any) => {
         let downSince = latestReading.timestamp;
-        for (let i = readings.length - 1; i >= 0; i--) {
+        for (let i = 0; i < readings.length; i++) {
             const rData = readings[i].data || [];
             if (rData.some((d: any) => d.stationId === station.id)) {
-                if (i + 1 < readings.length) downSince = readings[i + 1].timestamp;
+                if (i - 1 >= 0) downSince = readings[i - 1].timestamp;
                 break;
-            } else if (i === 0) {
+            } else if (i === readings.length - 1) {
                 downSince = 'start of day';
             }
         }
@@ -296,7 +297,7 @@ export async function generateHourlyReport() {
     const extractPm25Status = (data: any) => {
       if (!data || !data.data || !data.data.items || data.data.items.length === 0) return { total: 5, active: 0, missing: ['ALL (API data unavailable)'] };
       const items = data.data.items;
-      const latestReading = items[items.length - 1];
+      const latestReading = items[0];
       const keys = Object.keys(latestReading?.readings?.pm25_one_hourly || {});
       const active = keys.length;
       
@@ -305,12 +306,12 @@ export async function generateHourlyReport() {
       
       const missingInfo = missingRegions.map(region => {
         let downSince = latestReading.timestamp;
-        for (let i = items.length - 1; i >= 0; i--) {
+        for (let i = 0; i < items.length; i++) {
             const rKeys = Object.keys(items[i]?.readings?.pm25_one_hourly || {});
             if (rKeys.includes(region)) {
-                if (i + 1 < items.length) downSince = items[i + 1].timestamp;
+                if (i - 1 >= 0) downSince = items[i - 1].timestamp;
                 break;
-            } else if (i === 0) {
+            } else if (i === items.length - 1) {
                 downSince = 'start of day';
             }
         }
@@ -346,8 +347,12 @@ export async function generateHourlyReport() {
 
     // Extract raw PM2.5 readings for use in threats section
     if (pm25Data?.data?.items?.length > 0) {
-      const latestPmItem = pm25Data.data.items[pm25Data.data.items.length - 1];
+      const latestPmItem = pm25Data.data.items[0];
       pm25Readings = latestPmItem?.readings?.pm25_one_hourly || {};
+      
+      if (pm25Data.data.items.length > 1) {
+        previousPm25Readings = pm25Data.data.items[1]?.readings?.pm25_one_hourly || {};
+      }
     }
   } catch (error: any) {
     govSgStatus = `❌ FAILED (${error.message || 'Unknown'})`;
@@ -436,6 +441,27 @@ export async function generateHourlyReport() {
       const row1 = regions.slice(0, 3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
       const row2 = regions.slice(3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
       threatSection += `  ${row1}\n  ${row2}\n`;
+      
+      // Calculate Stats
+      const currentVals = Object.values(pm25Readings).filter(v => typeof v === 'number');
+      const prevVals = Object.values(previousPm25Readings).filter(v => typeof v === 'number');
+      
+      if (currentVals.length > 0) {
+        const min = Math.min(...currentVals);
+        const max = Math.max(...currentVals);
+        const avg = Math.round(currentVals.reduce((a, b) => a + b, 0) / currentVals.length);
+        
+        let trendStr = '';
+        if (prevVals.length > 0) {
+          const prevAvg = Math.round(prevVals.reduce((a, b) => a + b, 0) / prevVals.length);
+          if (avg > prevAvg) trendStr = ` (⬆️ +${avg - prevAvg} from last hr)`;
+          else if (avg < prevAvg) trendStr = ` (⬇️ ${avg - prevAvg} from last hr)`;
+          else trendStr = ` (➖ Unchanged)`;
+        }
+        
+        threatSection += `  <i>Stats: Min ${min} | Max ${max} | Avg ${avg}${trendStr}</i>\n`;
+      }
+      
       threatSection += `  <i>Ref: Normal (0-55) · Elevated (56-150) · High (151-250) · Very High (&gt;250)</i>\n`;
     }
   } else {
