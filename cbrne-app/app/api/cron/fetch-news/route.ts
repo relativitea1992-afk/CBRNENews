@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { after } from 'next/server';
+import { NextRequest } from 'next/server';
+import { extract } from '@extractus/article-extractor';
 import Parser from 'rss-parser';
 import prisma from '@/lib/prisma';
 import { triageNewsBatch, triageRelevantArticlePass2, clusterIncident } from '@/lib/gemini';
@@ -208,7 +210,20 @@ export async function GET(request: Request) {
           };
 
           if (res.isRelevant) {
-             const pass2Result = await triageRelevantArticlePass2(`Title: ${article.title}\n\nContent: ${article.content}`, {
+             let fullText = article.content || '';
+             try {
+               const articleData = await extract(article.url);
+               if (articleData && articleData.content) {
+                 const plainText = articleData.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                 if (plainText.length > fullText.length) {
+                   fullText = plainText.substring(0, 5000);
+                 }
+               }
+             } catch (e) {
+               console.error('[fetch-news] Failed to extract full article for:', article.url, e);
+             }
+
+             const pass2Result = await triageRelevantArticlePass2(`Title: ${article.title}\n\nContent: ${fullText}`, {
                lat: res.lat,
                lng: res.lng,
                modelUsed: batchResult.modelUsed,
