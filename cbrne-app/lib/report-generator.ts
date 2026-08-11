@@ -577,10 +577,24 @@ ${newsContent}`,
           config: { responseMimeType: "application/json" }
       });
 
-      const selectionRaw = geminiSelection.text?.trim() || '{}';
-      const selectionMatch = selectionRaw.match(/\{[\s\S]*\}/);
-      const cleanSelectionJson = selectionMatch ? selectionMatch[0] : '{}';
-      const selectionResult = JSON.parse(cleanSelectionJson);
+      let selectionResult: any = { newsApiTop2: [], cnaTop2: [], stTop2: [] };
+      try {
+        const selectionRaw = geminiSelection.text?.trim() || '{}';
+        const selectionMatch = selectionRaw.match(/\{[\s\S]*\}/);
+        const cleanSelectionJson = selectionMatch ? selectionMatch[0] : '{}';
+        selectionResult = JSON.parse(cleanSelectionJson);
+      } catch (e) {
+        console.error("Gemini Selection JSON parsing failed, using fallback.", e);
+        const newsApiArticles = allArticles.filter(a => a.source === 'NewsAPI').slice(0, 2);
+        const cnaArticles = allArticles.filter(a => a.source.startsWith('CNA')).slice(0, 2);
+        const stArticles = allArticles.filter(a => a.source.startsWith('ST')).slice(0, 2);
+        
+        selectionResult = {
+          newsApiTop2: newsApiArticles.map(a => ({ source: a.source, headline: a.headline })),
+          cnaTop2: cnaArticles.map(a => ({ source: a.source, headline: a.headline })),
+          stTop2: stArticles.map(a => ({ source: a.source, headline: a.headline }))
+        };
+      }
 
       // 2. Extract Full Text for Selected Articles
       const selectedUrls: string[] = [];
@@ -641,10 +655,20 @@ ${pm25Context}`,
           config: { responseMimeType: "application/json" }
       });
 
-      const assessmentRaw = geminiAssessmentResponse.text?.trim() || '{}';
-      const assessmentMatch = assessmentRaw.match(/\{[\s\S]*\}/);
-      const cleanAssessmentJson = assessmentMatch ? assessmentMatch[0] : '{}';
-      const assessmentResult = JSON.parse(cleanAssessmentJson);
+      let assessmentResult: any = {};
+      try {
+        const assessmentRaw = geminiAssessmentResponse.text?.trim() || '{}';
+        const assessmentMatch = assessmentRaw.match(/\{[\s\S]*\}/);
+        const cleanAssessmentJson = assessmentMatch ? assessmentMatch[0] : '{}';
+        assessmentResult = JSON.parse(cleanAssessmentJson);
+      } catch (e) {
+        console.error("Gemini Assessment JSON parsing failed.", e);
+        assessmentResult = {
+          assessment: "<i>Automated assessment temporarily unavailable due to parsing error. Please review the top headlines manually.</i>",
+          generalPosture: "Unknown",
+          advisory: "None"
+        };
+      }
 
       if (selectionResult.newsApiTop2 && selectionResult.newsApiTop2.length > 0) {
         selectionResult.newsApiTop2.forEach((item: any) => {
