@@ -637,7 +637,7 @@ Task 1: Provide a detailed threat assessment. First, review the new live article
 Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
 Task 3: Provide an actionable advisory based strictly on the assessment (or "None"). If there are live PM2.5 readings provided, you MUST explicitly reference the current PM2.5 levels (e.g. "Given the current PM2.5 levels are in the Normal range (max 36), no immediate action is required...") and factor them into your advisory.
 
-Output ONLY a valid raw JSON object (without markdown blocks) in the following structure:
+Output ONLY a valid raw JSON object. DO NOT wrap it in any markdown blocks. DO NOT wrap it in a parent object. The top-level keys MUST BE EXACTLY these three strings:
 {
   "assessment": "Detailed assessment html...",
   "generalPosture": "Security posture html...",
@@ -686,15 +686,24 @@ ${pm25Context}`,
         });
       }
 
+      const finalAssessment = assessmentResult.assessment || assessmentResult.DetailedAssessment || assessmentResult['Detailed Assessment'] || '';
+      const finalPosture = assessmentResult.generalPosture || assessmentResult.GeneralPosture || assessmentResult['General Security Posture'] || '';
+      const finalAdvisory = assessmentResult.advisory || assessmentResult.Advisory || '';
+      
+      let finalAssessmentStr = finalAssessment;
+      if (!finalAssessment && !finalPosture && !finalAdvisory) {
+         finalAssessmentStr = `<pre>${JSON.stringify(assessmentResult, null, 2)}</pre>`;
+      }
+
       geminiAssessmentHtml = `
 1. <b>Detailed Assessment:</b>
-${assessmentResult.assessment || ''}
+${finalAssessmentStr}
 
 2. <b>General Security Posture:</b>
-${assessmentResult.generalPosture || ''}
+${finalPosture}
 
 3. <b>Advisory:</b>
-${assessmentResult.advisory || ''}`;
+${finalAdvisory}`;
 
       const selectionTokenStr = geminiSelection.usageMetadata?.totalTokenCount 
         ? ` (${geminiSelection.modelUsed}, Tokens: ${geminiSelection.usageMetadata.totalTokenCount} [In: ${geminiSelection.usageMetadata.promptTokenCount}, Out: ${geminiSelection.usageMetadata.candidatesTokenCount}])`
