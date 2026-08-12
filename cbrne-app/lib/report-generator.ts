@@ -574,7 +574,48 @@ Output ONLY a valid raw JSON object (without markdown blocks) in the following s
 
 News Content:
 ${newsContent}`,
-          config: { responseMimeType: "application/json" }
+          config: { 
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                newsApiTop2: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      source: { type: "string" },
+                      headline: { type: "string" }
+                    },
+                    required: ["source", "headline"]
+                  }
+                },
+                cnaTop2: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      source: { type: "string" },
+                      headline: { type: "string" }
+                    },
+                    required: ["source", "headline"]
+                  }
+                },
+                stTop2: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      source: { type: "string" },
+                      headline: { type: "string" }
+                    },
+                    required: ["source", "headline"]
+                  }
+                }
+              },
+              required: ["newsApiTop2", "cnaTop2", "stTop2"]
+            }
+          }
       });
 
       let selectionResult: any = { newsApiTop2: [], cnaTop2: [], stTop2: [] };
@@ -652,7 +693,18 @@ ${fullTextContext || newsContent}
 Active Threat Timelines:
 ${clusterTimelineContext || 'No ongoing clustered threats.'}
 ${pm25Context}`,
-          config: { responseMimeType: "application/json" }
+          config: { 
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                assessment: { type: "string" },
+                generalPosture: { type: "string" },
+                advisory: { type: "string" }
+              },
+              required: ["assessment", "generalPosture", "advisory"]
+            }
+          }
       });
 
       let assessmentResult: any = {};

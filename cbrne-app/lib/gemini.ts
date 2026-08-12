@@ -55,7 +55,22 @@ ${articlesText}
   try {
     const response1 = await geminiGenerate({
       contents: prompt1,
-      config: { responseMimeType: 'application/json' }
+      config: { 
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              index: { type: "number" },
+              isRelevant: { type: "boolean" },
+              lat: { type: "number", nullable: true },
+              lng: { type: "number", nullable: true }
+            },
+            required: ["index", "isRelevant"]
+          }
+        }
+      }
     });
     
     if (!response1 || !response1.text) return null;
@@ -345,7 +360,19 @@ ${articleText}
   try {
     const response2 = await geminiGenerate({
       contents: prompt2,
-      config: { responseMimeType: 'application/json' }
+      config: { 
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: "object",
+          properties: {
+            headline: { type: "string" },
+            summary: { type: "string" },
+            advisory: { type: "string" },
+            type: { type: "string" }
+          },
+          required: ["headline", "summary", "type"]
+        }
+      }
     });
     
     if (response2 && response2.text) {
@@ -429,7 +456,20 @@ OR
 `;
 
   try {
-    const response = await geminiGenerate({ contents: prompt, config: { responseMimeType: 'application/json' } });
+    const response = await geminiGenerate({ 
+      contents: prompt, 
+      config: { 
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: "object",
+          properties: {
+            isSameEvent: { type: "boolean" },
+            clusterId: { type: "string" }
+          },
+          required: ["isSameEvent"]
+        }
+      } 
+    });
     if (!response || !response.text) return null;
     const cleaned = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
     const result = JSON.parse(cleaned);
