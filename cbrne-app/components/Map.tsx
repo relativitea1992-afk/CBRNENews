@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { MapContainer, TileLayer, Marker, Popup, useMap, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, CircleMarker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { renderToString } from 'react-dom/server';
 import { Wind, FlaskConical, Biohazard, Radiation, Bomb, CloudFog, Navigation, Activity } from 'lucide-react';
@@ -209,6 +209,9 @@ export default function Map({
             position={[station.lat, station.lng]}
             icon={arrowIcon}
           >
+            <Tooltip permanent direction="top" offset={[0, -10]} className="bg-transparent border-none shadow-none text-cyan-300 font-bold text-[10px] p-0 mt-2">
+              {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : ''}
+            </Tooltip>
             <Popup className="bg-slate-800 text-white rounded-md border-none">
               <div className="p-2 max-w-xs text-slate-800">
                 <h3 className="font-bold text-sm mb-1">{station.name}</h3>
@@ -235,6 +238,9 @@ export default function Map({
             pathOptions={{ color: color, fillColor: color, fillOpacity: 0.5, weight: 2 }}
             radius={25}
           >
+            <Tooltip permanent direction="center" className="bg-transparent border-none shadow-none text-white font-bold text-sm p-0 m-0">
+              {region.value !== null ? region.value : ''}
+            </Tooltip>
             <Popup className="bg-slate-800 text-white rounded-md border-none">
               <div className="p-2 max-w-xs text-slate-800">
                 <h3 className="font-bold text-sm mb-1 capitalize">{region.name} Region</h3>
