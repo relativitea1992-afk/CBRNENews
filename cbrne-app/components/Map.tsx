@@ -221,14 +221,14 @@ export default function Map({
             position={[station.lat, station.lng]}
             icon={arrowIcon}
           >
-            <Tooltip permanent direction={dir} offset={offset} className={`!bg-white/20 !border-none !shadow-sm backdrop-blur-sm ${station.speed !== null ? '!text-black' : '!text-slate-600'} font-bold text-[10px] px-1.5 py-0.5 rounded`}>
+            <Tooltip permanent direction={dir} offset={offset} className={`!bg-white/20 !border-none !shadow-sm backdrop-blur-sm ${station.speed !== null ? '!text-black' : '!text-red-500'} font-bold text-[10px] px-1.5 py-0.5 rounded`}>
               {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'Offline'}
             </Tooltip>
             <Popup className="bg-slate-800 text-white rounded-md border-none">
               <div className="p-2 max-w-xs text-slate-800">
                 <h3 className="font-bold text-sm mb-1">{station.name}</h3>
-                <p className="text-xs">Speed: {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'Offline'}</p>
-                <p className="text-xs">Direction: {station.direction !== null ? `${station.direction}°` : 'Offline'}</p>
+                <p className="text-xs">Speed: {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : <span className="text-red-500">Offline</span>}</p>
+                <p className="text-xs">Direction: {station.direction !== null ? `${station.direction}°` : <span className="text-red-500">Offline</span>}</p>
               </div>
             </Popup>
           </Marker>
@@ -282,7 +282,7 @@ export default function Map({
                     <li key={s.id} className={`flex justify-between items-center bg-slate-800/50 p-1.5 rounded ${s.speed === null ? 'opacity-50' : ''}`}>
                       <span className="truncate w-1/2" title={s.name}>{s.name}</span>
                       <span className="w-1/2 text-right font-mono text-[10px]">
-                        {s.speed !== null ? `${(s.speed * 1.852).toFixed(1)}km/h ${s.direction !== null ? `${s.direction}°` : ''}` : 'Offline'}
+                        {s.speed !== null ? `${(s.speed * 1.852).toFixed(1)}km/h ${s.direction !== null ? `${s.direction}°` : ''}` : <span className="text-red-500">Offline</span>}
                       </span>
                     </li>
                   ))}
