@@ -62,13 +62,8 @@ export default function Map({
 
   const center: [number, number] = [1.3521, 103.8198]; // Singapore center
   
-  const tileUrl = hideOverlay 
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-    : "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}";
-    
-  const attribution = hideOverlay
-    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    : '&copy; <a href="https://maps.google.com">Google Maps</a>';
+  const tileUrl = "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}";
+  const attribution = '&copy; <a href="https://maps.google.com">Google Maps</a>';
 
   return (
     <MapContainer 
