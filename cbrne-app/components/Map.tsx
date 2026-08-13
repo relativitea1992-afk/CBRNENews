@@ -212,7 +212,7 @@ export default function Map({
             <Popup className="bg-slate-800 text-white rounded-md border-none">
               <div className="p-2 max-w-xs text-slate-800">
                 <h3 className="font-bold text-sm mb-1">{station.name}</h3>
-                <p className="text-xs">Speed: {station.speed !== null ? `${station.speed} knots` : 'N/A'}</p>
+                <p className="text-xs">Speed: {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'N/A'}</p>
                 <p className="text-xs">Direction: {station.direction !== null ? `${station.direction}°` : 'N/A'}</p>
               </div>
             </Popup>
@@ -262,9 +262,9 @@ export default function Map({
                 <ul className="text-xs space-y-1.5 text-slate-300">
                   {windData.map(s => (
                     <li key={s.id} className="flex justify-between items-center bg-slate-800/50 p-1.5 rounded">
-                      <span className="truncate w-3/5" title={s.name}>{s.name}</span>
-                      <span className="w-2/5 text-right font-mono text-[10px]">
-                        {s.speed !== null ? `${s.speed}kts` : '-'} {s.direction !== null ? `${s.direction}°` : '-'}
+                      <span className="truncate w-1/2" title={s.name}>{s.name}</span>
+                      <span className="w-1/2 text-right font-mono text-[10px]">
+                        {s.speed !== null ? `${(s.speed * 1.852).toFixed(1)}km/h` : '-'} {s.direction !== null ? `${s.direction}°` : '-'}
                       </span>
                     </li>
                   ))}
@@ -295,7 +295,7 @@ export default function Map({
                           <span className={`w-2 h-2 rounded-full ${dotColor}`}></span>
                           {r.name}
                         </span>
-                        <span className="font-mono font-bold text-slate-200">{r.value !== null ? r.value : '-'}</span>
+                        <span className="font-mono font-bold text-slate-200 text-[10px]">{r.value !== null ? `${r.value} µg/m³` : '-'}</span>
                       </li>
                     );
                   })}
