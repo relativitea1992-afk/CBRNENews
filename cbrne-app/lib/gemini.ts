@@ -43,8 +43,8 @@ Return the result STRICTLY as a JSON array of objects.
 Each object MUST have the following fields:
 - "index" (number): The exact index of the article in the provided list.
 - "isRelevant" (boolean): true if it represents a relevant CBRNE/Odour/Haze threat to Singapore, false otherwise.
-- "lat" (number | null): Latitude of the incident location. Null if unknown or not relevant.
-- "lng" (number | null): Longitude of the incident location. Null if unknown or not relevant.
+- "lat" (number | null): Precise Latitude of the SPECIFIC incident location (e.g., exact school, building, facility, or street). Do NOT use the generic geographic center of Singapore (1.3521) unless the location is completely unspecified. Null if unknown or not relevant.
+- "lng" (number | null): Precise Longitude of the SPECIFIC incident location. Do NOT use the generic geographic center of Singapore (103.8198) unless the location is completely unspecified. Null if unknown or not relevant.
 
 Articles:
 """
