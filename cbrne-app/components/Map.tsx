@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import { renderToString } from 'react-dom/server';
-import { Wind, FlaskConical, Biohazard, Radiation, Bomb, CloudFog } from 'lucide-react';
+import { Wind, FlaskConical, Biohazard, Radiation, Bomb, CloudFog, Navigation, Activity } from 'lucide-react';
 
 type Incident = {
   id: string;
@@ -31,7 +31,23 @@ function MapFix() {
   return null;
 }
 
-export default function Map({ incidents }: { incidents: Incident[] }) {
+export default function Map({ 
+  incidents, 
+  windData = [], 
+  pm25Data = [], 
+  showWind = false, 
+  showPm25 = false,
+  windError = null,
+  pm25Error = null
+}: { 
+  incidents: Incident[], 
+  windData?: any[], 
+  pm25Data?: any[], 
+  showWind?: boolean, 
+  showPm25?: boolean,
+  windError?: string | null,
+  pm25Error?: string | null
+}) {
   const [mounted, setMounted] = useState(false);
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const searchParams = useSearchParams();
@@ -160,6 +176,136 @@ export default function Map({ incidents }: { incidents: Incident[] }) {
           </Marker>
         );
       })}
+      {/* Environmental Data Overlays */}
+      {showWind && windData.map((station) => {
+        if (!station.lat || !station.lng) return null;
+        
+        const arrowHtml = renderToString(
+          <div style={{
+            transform: `rotate(${station.direction || 0}deg)`,
+            color: '#22d3ee', // cyan-400
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '24px',
+            height: '24px',
+            textShadow: '0 0 5px rgba(0,0,0,0.8)'
+          }}>
+            <Navigation size={24} fill="#0891b2" />
+          </div>
+        );
+
+        const arrowIcon = L.divIcon({
+          html: arrowHtml,
+          className: 'custom-wind-icon bg-transparent border-none',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+          popupAnchor: [0, -12]
+        });
+
+        return (
+          <Marker 
+            key={`wind-${station.id}`} 
+            position={[station.lat, station.lng]}
+            icon={arrowIcon}
+          >
+            <Popup className="bg-slate-800 text-white rounded-md border-none">
+              <div className="p-2 max-w-xs text-slate-800">
+                <h3 className="font-bold text-sm mb-1">{station.name}</h3>
+                <p className="text-xs">Speed: {station.speed !== null ? `${station.speed} knots` : 'N/A'}</p>
+                <p className="text-xs">Direction: {station.direction !== null ? `${station.direction}°` : 'N/A'}</p>
+              </div>
+            </Popup>
+          </Marker>
+        );
+      })}
+
+      {showPm25 && pm25Data.map((region) => {
+        if (!region.lat || !region.lng) return null;
+        
+        let color = '#22c55e'; // Green (Normal 0-55)
+        if (region.value > 250) color = '#dc2626'; // Red (Very High)
+        else if (region.value > 150) color = '#f97316'; // Orange (High)
+        else if (region.value > 55) color = '#eab308'; // Yellow (Elevated)
+
+        return (
+          <CircleMarker
+            key={`pm25-${region.name}`}
+            center={[region.lat, region.lng]}
+            pathOptions={{ color: color, fillColor: color, fillOpacity: 0.5, weight: 2 }}
+            radius={25}
+          >
+            <Popup className="bg-slate-800 text-white rounded-md border-none">
+              <div className="p-2 max-w-xs text-slate-800">
+                <h3 className="font-bold text-sm mb-1 capitalize">{region.name} Region</h3>
+                <p className="text-xs font-semibold">PM2.5: {region.value !== null ? region.value : 'N/A'}</p>
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+
+      {/* Control Panel Overlay for Status Lists */}
+      {(showWind || showPm25) && (
+        <div className="absolute top-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-4 rounded-lg shadow-xl z-[1000] w-64 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          
+          {showWind && (
+            <div className="mb-4">
+              <h4 className="font-semibold text-cyan-400 mb-2 border-b border-slate-700 pb-1 sticky top-0 bg-slate-900/95 flex items-center gap-1">
+                <Navigation size={14} /> NEA Weather Stations
+              </h4>
+              {windError ? (
+                <p className="text-xs text-red-400">{windError}</p>
+              ) : windData.length === 0 ? (
+                <p className="text-xs text-slate-400">Loading...</p>
+              ) : (
+                <ul className="text-xs space-y-1.5 text-slate-300">
+                  {windData.map(s => (
+                    <li key={s.id} className="flex justify-between items-center bg-slate-800/50 p-1.5 rounded">
+                      <span className="truncate w-3/5" title={s.name}>{s.name}</span>
+                      <span className="w-2/5 text-right font-mono text-[10px]">
+                        {s.speed !== null ? `${s.speed}kts` : '-'} {s.direction !== null ? `${s.direction}°` : '-'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {showPm25 && (
+            <div>
+              <h4 className="font-semibold text-amber-400 mb-2 border-b border-slate-700 pb-1 sticky top-0 bg-slate-900/95 flex items-center gap-1">
+                <Activity size={14} /> Gov.sg PM2.5 Regions
+              </h4>
+              {pm25Error ? (
+                <p className="text-xs text-red-400">{pm25Error}</p>
+              ) : pm25Data.length === 0 ? (
+                <p className="text-xs text-slate-400">Loading...</p>
+              ) : (
+                <ul className="text-xs space-y-1.5 text-slate-300">
+                  {pm25Data.map(r => {
+                    let dotColor = 'bg-green-500';
+                    if (r.value > 250) dotColor = 'bg-red-500';
+                    else if (r.value > 150) dotColor = 'bg-orange-500';
+                    else if (r.value > 55) dotColor = 'bg-yellow-500';
+                    return (
+                      <li key={r.name} className="flex justify-between items-center bg-slate-800/50 p-1.5 rounded">
+                        <span className="capitalize flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${dotColor}`}></span>
+                          {r.name}
+                        </span>
+                        <span className="font-mono font-bold text-slate-200">{r.value !== null ? r.value : '-'}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
     </MapContainer>
   );
 }

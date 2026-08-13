@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { DateTime } from 'luxon';
-import { Wind, FlaskConical, Biohazard, Radiation, Bomb, Trash2, Loader2, CloudFog } from 'lucide-react';
+import { Wind, FlaskConical, Biohazard, Radiation, Bomb, Trash2, Loader2, CloudFog, RefreshCw, Activity, Navigation } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -78,6 +78,71 @@ const getTypeConfig = (type: string) => {
 export default function Dashboard({ incidents, isSnapshot = false }: { incidents: Incident[], isSnapshot?: boolean }) {
   const router = useRouter();
   const [isClearing, setIsClearing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Environmental Data State
+  const [showWind, setShowWind] = useState(false);
+  const [windData, setWindData] = useState<any[]>([]);
+  const [showPm25, setShowPm25] = useState(false);
+  const [pm25Data, setPm25Data] = useState<any[]>([]);
+  const [isLoadingWind, setIsLoadingWind] = useState(false);
+  const [isLoadingPm25, setIsLoadingPm25] = useState(false);
+  const [windError, setWindError] = useState<string|null>(null);
+  const [pm25Error, setPm25Error] = useState<string|null>(null);
+
+  const toggleWind = async () => {
+    if (showWind) {
+      setShowWind(false);
+      return;
+    }
+    setShowWind(true);
+    if (windData.length > 0) return; // already fetched
+    setIsLoadingWind(true);
+    setWindError(null);
+    try {
+      const res = await fetch('/api/env-data?type=wind');
+      const data = await res.json();
+      if (data.data) {
+        setWindData(data.data);
+      } else {
+        setWindError(data.error || 'Failed to fetch wind data');
+      }
+    } catch (e: any) {
+      setWindError(e.message);
+    } finally {
+      setIsLoadingWind(false);
+    }
+  };
+
+  const togglePm25 = async () => {
+    if (showPm25) {
+      setShowPm25(false);
+      return;
+    }
+    setShowPm25(true);
+    if (pm25Data.length > 0) return; // already fetched
+    setIsLoadingPm25(true);
+    setPm25Error(null);
+    try {
+      const res = await fetch('/api/env-data?type=pm25');
+      const data = await res.json();
+      if (data.data) {
+        setPm25Data(data.data);
+      } else {
+        setPm25Error(data.error || 'Failed to fetch PM2.5 data');
+      }
+    } catch (e: any) {
+      setPm25Error(e.message);
+    } finally {
+      setIsLoadingPm25(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    router.refresh();
+    setTimeout(() => setIsRefreshing(false), 1000); // small visual delay
+  };
 
   const handleClearAlerts = async () => {
     if (!confirm('Are you sure you want to clear all active alerts?')) return;
@@ -103,6 +168,14 @@ export default function Dashboard({ incidents, isSnapshot = false }: { incidents
         </div>
         <div className="flex items-center gap-6">
           <button 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={isRefreshing ? "animate-spin text-neon-blue" : ""} />
+            Refresh
+          </button>
+          <button 
             onClick={handleClearAlerts}
             disabled={isClearing}
             className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors disabled:opacity-50"
@@ -121,9 +194,27 @@ export default function Dashboard({ incidents, isSnapshot = false }: { incidents
         
         {/* Left Panel: Feed */}
         <section className="w-full lg:w-1/3 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
-          <div className="flex justify-between items-center px-1">
+          <div className="flex justify-between items-center px-1 mb-2">
             <h2 className="text-lg font-semibold text-slate-200">Latest Alerts (24h)</h2>
             <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 border border-slate-700">{incidents.length} Records</span>
+          </div>
+
+          {/* Environmental Toggles */}
+          <div className="flex gap-2 px-1 mb-2">
+            <button 
+              onClick={toggleWind}
+              className={`flex-1 flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium rounded border transition-colors ${showWind ? 'bg-cyan-900/50 text-cyan-300 border-cyan-800' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'}`}
+            >
+              {isLoadingWind ? <Loader2 size={14} className="animate-spin" /> : <Navigation size={14} />}
+              NEA Wind Data
+            </button>
+            <button 
+              onClick={togglePm25}
+              className={`flex-1 flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium rounded border transition-colors ${showPm25 ? 'bg-amber-900/50 text-amber-300 border-amber-800' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'}`}
+            >
+              {isLoadingPm25 ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
+              Gov.sg PM2.5
+            </button>
           </div>
 
           {incidents.length === 0 ? (
@@ -175,7 +266,7 @@ export default function Dashboard({ incidents, isSnapshot = false }: { incidents
 
         {/* Right Panel: Map */}
         <section className="w-full lg:w-2/3 h-[50vh] min-h-[50vh] lg:h-full lg:min-h-[calc(100vh-120px)] relative rounded-xl overflow-hidden glass-panel border border-slate-700/50 shadow-lg">
-          {isSnapshot ? <StaticSnapshotMap incidents={incidents} /> : <MapWithNoSSR incidents={incidents} />}
+          {isSnapshot ? <StaticSnapshotMap incidents={incidents} /> : <MapWithNoSSR incidents={incidents} windData={showWind ? windData : []} pm25Data={showPm25 ? pm25Data : []} showWind={showWind} showPm25={showPm25} windError={windError} pm25Error={pm25Error} />}
           
           {/* Map Legend Overlay */}
           <div className="absolute bottom-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl z-[1000] text-xs">
