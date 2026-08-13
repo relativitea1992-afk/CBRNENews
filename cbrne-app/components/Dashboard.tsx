@@ -50,7 +50,7 @@ export function StaticSnapshotMap({ incidents, windData = [] }: { incidents: Inc
   const ptParam = [incidentPt, windPt].filter(Boolean).join('~');
   
   const ptQuery = ptParam ? `&pt=${ptParam}` : '';
-  const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=12&l=map&lang=en_US&size=650,450${ptQuery}`;
+  const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=11&l=map&lang=en_US&size=650,450${ptQuery}`;
   
   return (
     <div className="absolute inset-0 z-0 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
