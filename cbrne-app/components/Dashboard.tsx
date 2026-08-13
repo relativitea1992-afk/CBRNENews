@@ -201,16 +201,14 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
           <h1 className="text-2xl font-bold tracking-tight text-glow flex items-center gap-2">
             <span className="text-neon-blue">CBRNE</span> OSINT Dashboard
           </h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-sm text-slate-400">Singapore Regional Threat Intelligence</p>
-            {currentTime && (
-              <span className="text-xs text-slate-300 font-mono bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700 shadow-sm ml-2">
-                {currentTime.toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'medium' })}
-              </span>
-            )}
-          </div>
+          <p className="text-sm text-slate-400 mt-1">Singapore Regional Threat Intelligence</p>
         </div>
         <div className="flex items-center gap-6">
+          {currentTime && (
+            <div className="flex items-center gap-2 px-3 py-1.5 text-base font-bold font-mono bg-slate-900 text-neon-blue rounded border border-slate-700 shadow-sm">
+              {currentTime.toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'medium' })}
+            </div>
+          )}
           <button 
             onClick={handleRefresh}
             disabled={isRefreshing}
