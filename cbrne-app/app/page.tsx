@@ -27,5 +27,30 @@ export default async function Home(
     createdAt: i.createdAt.toISOString(),
   }));
 
-  return <Dashboard incidents={serializedIncidents} isSnapshot={isSnapshot} />;
+  let initialWindData: any[] = [];
+  if (isSnapshot) {
+    try {
+      const [speedRes, dirRes] = await Promise.all([
+        fetch('https://api.data.gov.sg/v1/environment/wind-speed', { next: { revalidate: 60 } }),
+        fetch('https://api.data.gov.sg/v1/environment/wind-direction', { next: { revalidate: 60 } })
+      ]);
+      const speedData = await speedRes.json();
+      const dirData = await dirRes.json();
+      const stations = speedData.metadata.stations;
+      const speedReadings = speedData.items[0].readings;
+      const dirReadings = dirData.items[0].readings;
+      initialWindData = stations.map((station: any) => ({
+        id: station.id,
+        name: station.name,
+        lat: station.location.latitude,
+        lng: station.location.longitude,
+        speed: speedReadings.find((r: any) => r.station_id === station.id)?.value ?? null,
+        direction: dirReadings.find((r: any) => r.station_id === station.id)?.value ?? null
+      }));
+    } catch (e) {
+      console.error('Failed to fetch initial wind data for snapshot', e);
+    }
+  }
+
+  return <Dashboard incidents={serializedIncidents} isSnapshot={isSnapshot} initialWindData={initialWindData} />;
 }

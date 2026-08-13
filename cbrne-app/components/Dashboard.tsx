@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { DateTime } from 'luxon';
 import { Wind, FlaskConical, Biohazard, Radiation, Bomb, Trash2, Loader2, CloudFog, RefreshCw, Activity, Navigation } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const MapWithNoSSR = dynamic(() => import('@/components/Map'), {
   ssr: false,
@@ -25,9 +25,10 @@ interface Incident {
   advisory: string | null;
 }
 
-export function StaticSnapshotMap({ incidents }: { incidents: Incident[] }) {
+export function StaticSnapshotMap({ incidents, windData = [] }: { incidents: Incident[], windData?: any[] }) {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const ptParam = incidents
+  
+  const incidentPt = incidents
     .filter(i => i.latitude && i.longitude)
     .map(i => {
       let color = 'pm2rdm'; // default red
@@ -40,6 +41,13 @@ export function StaticSnapshotMap({ incidents }: { incidents: Incident[] }) {
       return `${i.longitude},${i.latitude},${color}`;
     })
     .join('~');
+    
+  const windPt = windData
+    .filter(w => w.lat && w.lng)
+    .map(w => `${w.lng},${w.lat},pm2lbm`)
+    .join('~');
+    
+  const ptParam = [incidentPt, windPt].filter(Boolean).join('~');
   
   const ptQuery = ptParam ? `&pt=${ptParam}` : '';
   const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=11&l=map&lang=en_US&size=650,450${ptQuery}`;
@@ -75,14 +83,14 @@ const getTypeConfig = (type: string) => {
   }
 };
 
-export default function Dashboard({ incidents, isSnapshot = false }: { incidents: Incident[], isSnapshot?: boolean }) {
+export default function Dashboard({ incidents, isSnapshot = false, initialWindData = [] }: { incidents: Incident[], isSnapshot?: boolean, initialWindData?: any[] }) {
   const router = useRouter();
   const [isClearing, setIsClearing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Environmental Data State
-  const [showWind, setShowWind] = useState(false);
-  const [windData, setWindData] = useState<any[]>([]);
+  const [showWind, setShowWind] = useState(true);
+  const [windData, setWindData] = useState<any[]>(initialWindData);
   const [showPm25, setShowPm25] = useState(false);
   const [pm25Data, setPm25Data] = useState<any[]>([]);
   const [isLoadingWind, setIsLoadingWind] = useState(false);
@@ -90,13 +98,8 @@ export default function Dashboard({ incidents, isSnapshot = false }: { incidents
   const [windError, setWindError] = useState<string|null>(null);
   const [pm25Error, setPm25Error] = useState<string|null>(null);
 
-  const toggleWind = async () => {
-    if (showWind) {
-      setShowWind(false);
-      return;
-    }
-    setShowWind(true);
-    if (windData.length > 0) return; // already fetched
+  const fetchWindData = async () => {
+    if (windData.length > 0) return;
     setIsLoadingWind(true);
     setWindError(null);
     try {
@@ -113,6 +116,22 @@ export default function Dashboard({ incidents, isSnapshot = false }: { incidents
       setIsLoadingWind(false);
     }
   };
+
+  const toggleWind = () => {
+    if (showWind) {
+      setShowWind(false);
+    } else {
+      setShowWind(true);
+      fetchWindData();
+    }
+  };
+
+  useEffect(() => {
+    // Auto-fetch wind data on mount if we don't have it
+    if (initialWindData.length === 0 && !isSnapshot) {
+      fetchWindData();
+    }
+  }, []);
 
   const togglePm25 = async () => {
     if (showPm25) {
@@ -266,7 +285,7 @@ export default function Dashboard({ incidents, isSnapshot = false }: { incidents
 
         {/* Right Panel: Map */}
         <section className="w-full lg:w-2/3 h-[50vh] min-h-[50vh] lg:h-full lg:min-h-[calc(100vh-120px)] relative rounded-xl overflow-hidden glass-panel border border-slate-700/50 shadow-lg">
-          {isSnapshot ? <StaticSnapshotMap incidents={incidents} /> : <MapWithNoSSR incidents={incidents} windData={showWind ? windData : []} pm25Data={showPm25 ? pm25Data : []} showWind={showWind} showPm25={showPm25} windError={windError} pm25Error={pm25Error} />}
+          {isSnapshot ? <StaticSnapshotMap incidents={incidents} windData={initialWindData} /> : <MapWithNoSSR incidents={incidents} windData={showWind ? windData : []} pm25Data={showPm25 ? pm25Data : []} showWind={showWind} showPm25={showPm25} windError={windError} pm25Error={pm25Error} />}
           
           {/* Map Legend Overlay */}
           <div className="absolute bottom-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl z-[1000] text-xs">
