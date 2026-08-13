@@ -178,7 +178,7 @@ export default function Map({
         );
       })}
       {/* Environmental Data Overlays */}
-      {showWind && windData.map((station) => {
+      {showWind && windData.map((station, index) => {
         if (!station.lat || !station.lng) return null;
         
         const arrowHtml = renderToString(
@@ -205,13 +205,23 @@ export default function Map({
           popupAnchor: [0, -12]
         });
 
+        // Distribute tooltip directions to prevent overlap in snapshot mode
+        const dirs = ["top", "bottom", "left", "right"] as const;
+        const dir = hideOverlay ? dirs[index % 4] : "top";
+        const offset = {
+          "top": [0, -10],
+          "bottom": [0, 10],
+          "left": [-10, 0],
+          "right": [10, 0]
+        }[dir] as [number, number];
+
         return (
           <Marker 
             key={`wind-${station.id}`} 
             position={[station.lat, station.lng]}
             icon={arrowIcon}
           >
-            <Tooltip permanent direction="top" offset={[0, -10]} className={`!bg-white/50 !border-none !shadow-sm backdrop-blur-sm ${station.speed !== null ? '!text-black' : '!text-slate-600'} font-bold text-[10px] px-1.5 py-0.5 rounded mt-2`}>
+            <Tooltip permanent direction={dir} offset={offset} className={`!bg-white/20 !border-none !shadow-sm backdrop-blur-sm ${station.speed !== null ? '!text-black' : '!text-slate-600'} font-bold text-[10px] px-1.5 py-0.5 rounded`}>
               {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'Offline'}
             </Tooltip>
             <Popup className="bg-slate-800 text-white rounded-md border-none">
