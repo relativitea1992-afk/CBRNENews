@@ -323,7 +323,7 @@ IMPORTANT RULES FOR YOUR ADVISORY:
     if (histPm) {
       windContext += `\nHISTORICAL PM2.5 (~1 hour ago):\nTimestamp: ${histPm.timestamp}\nReadings: ${JSON.stringify(histPm.readings?.pm25_one_hourly || {})}\n`;
     }
-    windContext += `\nIf this is a haze or air quality incident, explicitly incorporate these PM2.5 readings into your threat assessment. Highlight specific regions (North, South, East, West, Central) that currently have unhealthy or high levels of PM2.5. IMPORTANT RULE: For Haze / Air Quality threats, ONLY perform and include the "Wind Projection" section if there is EXACTLY ONE specific region with high/unhealthy PM2.5 levels. If there are multiple regions with high/unhealthy PM2.5, or if no regions are high/unhealthy, completely OMIT the Wind Projection section from your advisory. 
+    windContext += `\nIf this is a haze or air quality incident, explicitly incorporate these PM2.5 readings into your threat assessment. Highlight specific regions (North, South, East, West, Central) that currently have unhealthy or high levels of PM2.5. IMPORTANT RULE: For Haze / Air Quality threats, perform the actual "Wind Projection" calculation to track the plume. However, if there are multiple regions in Singapore with high/unhealthy PM2.5 levels (indicating widespread, un-trackable haze rather than a localized plume), you MUST still include the "Wind Projection:" heading but explicitly state the reason why the calculation is excluded (e.g., "Wind projection calculation is excluded as the PM2.5 levels are widely elevated across multiple regions, indicating widespread haze rather than a localized plume."). 
 Additionally, for Haze/Air Quality threats, you MUST state the PM2.5 reference bands in your advisory (e.g., under Risk) so the user understands the severity: Normal (0-55), Elevated (56-150), High (151-250), Very High (>250).`;
   }
 
@@ -337,18 +337,19 @@ Return the result strictly as a JSON object with the following fields:
 - "headline" (string): A concise, punchy headline for the alert.
 - "summary" (string): A concise, high-level threat assessment of the incident (1-2 sentences maximum). State only the exact nature of the threat and its location. Do NOT duplicate information that will be covered in the Wind Projection, Risk, Indoors, Outdoors, or Medical Advice sections below.
 - "advisory" (string): Provide an actionable advisory based strictly on the threat assessment. 
-  - **Wind Projection:** (Include only if applicable based on the rules above). You must act as a geospatial vector engine. Calculate the direction the hazard will travel based on the wind data and the SOURCE LOCATION relative to Singapore.
+  - **Wind Projection:** You must act as a geospatial vector engine. Evaluate if a wind projection is warranted based on the physical properties of the identified threat (e.g., if it is an airborne chemical/biological/radiological release, odour, haze, or a bomb threat used to disperse CBRNE agents, a wind projection IS warranted). If warranted, calculate the direction the hazard will travel based on the wind data and the SOURCE LOCATION relative to Singapore:
     - Explicitly mention the SOURCE location and format its name EXACTLY as a special markdown tag like this: [Source Name](MAP:LAT,LNG).
     - Explicitly state the provided mathematically closest weather station and its exact data (wind speed and blowing towards direction) as the basis for your projection. Format it EXACTLY as a special markdown tag like this: [Station Name](MAP:LAT,LNG). Do not output the raw Lat/Lng text anywhere else.
     - State the wind direction by indicating where it is blowing TOWARDS (e.g., "blowing north", "blowing southeast"). 
     - State the wind speed in km/h.
     - If the physical math shows the hazard will NOT hit Singapore, you MUST state "Based on the wind vector, the hazard will travel away from Singapore. No impact is expected."
     - If it does hit Singapore, project the exact impact area 30 mins and 1 hr from now (assuming similar wind speed and direction across the time frame), naming the specific townships.
+    - IMPORTANT RULE: If the threat type does NOT require a wind projection (e.g. bomb threat, bomb hoax, contained indoor incidents with no airborne release), or if it is widespread haze with multiple/no unhealthy PM2.5 regions, you MUST still include the "Wind Projection:" heading and explicitly state the reason/assessment why wind projection is excluded (e.g., "Wind projection is excluded as this is a localized explosive threat with no expected airborne release").
   - **Risk:** Highlight potential impacts to specific Singaporean regions or residents based on the incident details. 
   - **Indoors:** Clearly state what residents should do if they are INDOORS.
   - **Outdoors:** Clearly state what residents should do if they are OUTDOORS.
   - **Medical Advice:** Include specific CBRNE medical advice. 
-  - IMPORTANT: You MUST explicitly include the headings (e.g., "Wind Projection:", "Risk:", "Indoors:", "Outdoors:", "Medical Advice:") at the beginning of each corresponding section. Use the exact string [BREAK] to separate these sections. Do not use actual line breaks or newline characters in the JSON string. If a section is omitted based on the rules (e.g., Wind Projection for widespread haze), do not include its heading.
+  - IMPORTANT: You MUST explicitly include the headings (e.g., "Wind Projection:", "Risk:", "Indoors:", "Outdoors:", "Medical Advice:") at the beginning of each corresponding section. Use the exact string [BREAK] to separate these sections. Do not use actual line breaks or newline characters in the JSON string.
 - "type" (string): Classify as "Chemical", "Biological", "Radiological", "Nuclear", "Explosive", "Odour", "Haze / Air Quality", or "Unknown".
 
 News text:

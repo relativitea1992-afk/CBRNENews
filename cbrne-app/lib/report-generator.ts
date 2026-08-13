@@ -674,7 +674,7 @@ ${newsContent}`,
       const geminiAssessmentResponse = await geminiGenerate({
           contents: `You are a CBRNE threat analyst monitoring Singapore. Note: You must also treat Haze, Air Quality, and Odour incidents as relevant threats.
 Below are the top extracted news articles from live feeds, as well as timelines of ongoing active threat events.
-Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. You MUST include a short summary explaining why the reviewed articles are assessed to be relevant or not relevant as a threat to Singapore. ONLY include detailed analysis for relevant threats (CBRNE + Haze / Air Quality / Odour). If ALL articles are non-threats (e.g., standard accidents, generic crime, kidnappings, general infrastructure faults), do NOT list them individually; instead, provide a single consolidated sentence stating that all recent articles were reviewed and no CBRNE/environmental threats were detected, followed by a short summary of why they are not relevant to Singapore. If there is a mix, provide detailed analysis for the relevant threats (including why they are relevant to Singapore) and consolidate the non-threats into one brief sentence (including why they are not relevant). YOU MUST USE EXACTLY TWO HTML LINE BREAKS (<br><br>) after this consolidated sentence before beginning the next section. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles. Ensure all dates/times mentioned in the timeline are in a clear, human-readable format (e.g. "Aug 9, 12:55 PM"). Do not output raw UTC timestamps.
+Task 1: Provide a detailed threat assessment. First, review the new live articles for immediate threats. You MUST include a short summary explaining why the reviewed articles are assessed to be relevant or not relevant as a threat to Singapore. ONLY include detailed analysis for relevant threats (CBRNE + Haze / Air Quality / Odour). If ALL articles are non-threats (e.g., standard accidents, generic crime, kidnappings, general infrastructure faults), do NOT list them individually; instead, provide a single consolidated sentence stating that all recent articles were reviewed and no CBRNE/environmental threats were detected, followed by a short summary of why they are not relevant to Singapore. If there is a mix, provide detailed analysis for the relevant threats (including why they are relevant to Singapore) and consolidate the non-threats into one brief sentence (including why they are not relevant). YOU MUST USE EXACTLY TWO HTML LINE BREAKS (<br><br>) after this consolidated sentence before beginning the next section. Then, review the [Active Threat Timelines] below. If there are active tracked threats, state their timeline and provide updates based on the latest articles. Instead of listing every single article, you must summarise the whole timeline into a cohesive narrative. Ensure all dates/times mentioned in the timeline are in a clear, human-readable format (e.g. "Aug 9, 12:55 PM"). Do not output raw UTC timestamps.
 Task 2: Provide a general security posture analysis for Singapore. Keep it extremely brief (e.g., "Normal") if no threat.
 Task 3: Provide an actionable advisory based strictly on the assessment (or "None"). If there are live PM2.5 readings provided, you MUST explicitly reference the current PM2.5 levels (e.g. "Given the current PM2.5 levels are in the Normal range (max 36), no immediate action is required...") and factor them into your advisory.
 
@@ -798,13 +798,13 @@ ${finalAdvisory}`;
   }
 
   // 8. Construct the Hourly Report Messages (Split to bypass 4096 char limit)
-  const reportMsgPart1 = `📊 <b>SYSTEM HOURLY REPORT (Part 1/2)</b> 📊
+  let reportMsgPart1 = `📊 <b>SYSTEM HOURLY REPORT (Part 1/2)</b> 📊
 
 <b>News Monitoring Cron Job</b>
 ${newsStatusMsg}
 ${threatSection}`;
 
-  const reportMsgPart2 = `📊 <b>SYSTEM HOURLY REPORT (Part 2/2)</b> 📊
+  let reportMsgPart2 = `📊 <b>SYSTEM HOURLY REPORT (Part 2/2)</b> 📊
 
 <b>System Linkages & APIs</b>
 <b>Gemini AI Engine:</b>
@@ -815,6 +815,28 @@ ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 <b>Supabase Link:</b> ${supabaseStatus}
 
 <i>Report generated automatically.</i>`;
+
+  const MAX_LEN = 4000;
+  if (reportMsgPart1.length > MAX_LEN) {
+    const excess = reportMsgPart1.substring(MAX_LEN);
+    reportMsgPart1 = reportMsgPart1.substring(0, MAX_LEN);
+    
+    // Reconstruct Part 2 with the excess text prepended
+    reportMsgPart2 = `📊 <b>SYSTEM HOURLY REPORT (Part 2/2)</b> 📊
+
+...[Continuation from Part 1]
+${excess}
+
+<b>System Linkages & APIs</b>
+<b>Gemini AI Engine:</b>
+${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
+<b>CNA RSS Link:</b> ${cnaRssStatus}
+<b>ST RSS Link:</b> ${stRssStatus}
+<b>Gov sg Env APIs:</b> ${govSgStatus}
+<b>Supabase Link:</b> ${supabaseStatus}
+
+<i>Report generated automatically.</i>`;
+  }
 
   let egressBytes = 0;
   // 6. Send to Telegram sequentially
