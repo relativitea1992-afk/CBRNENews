@@ -108,7 +108,7 @@ export default function Map({
   return (
     <MapContainer 
       center={center} 
-      zoom={11} 
+      zoom={12} 
       scrollWheelZoom={true} 
       className="absolute inset-0 z-0 rounded-xl"
       style={{ height: '100%', width: '100%', background: '#0f172a' }} // Matches bg-slate-900
@@ -253,7 +253,7 @@ export default function Map({
 
       {/* Control Panel Overlay for Status Lists */}
       {(showWind || showPm25) && (
-        <div className="absolute top-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-4 rounded-lg shadow-xl z-[1000] w-64 max-h-[60vh] overflow-y-auto custom-scrollbar">
+        <div className="absolute top-4 right-4 bg-slate-900/60 backdrop-blur border border-slate-700 p-4 rounded-lg shadow-xl z-[1000] w-64 max-h-[60vh] overflow-y-auto custom-scrollbar">
           
           {showWind && (
             <div className="mb-4">
