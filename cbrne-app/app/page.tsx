@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import Dashboard from '@/components/Dashboard';
+import { NEA_WIND_STATIONS } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,14 +37,13 @@ export default async function Home(
       ]);
       const speedData = await speedRes.json();
       const dirData = await dirRes.json();
-      const stations = speedData.metadata.stations;
-      const speedReadings = speedData.items[0].readings;
-      const dirReadings = dirData.items[0].readings;
-      initialWindData = stations.map((station: any) => ({
+      const speedReadings = speedData.items[0].readings || [];
+      const dirReadings = dirData.items[0].readings || [];
+      initialWindData = NEA_WIND_STATIONS.map((station) => ({
         id: station.id,
         name: station.name,
-        lat: station.location.latitude,
-        lng: station.location.longitude,
+        lat: station.lat,
+        lng: station.lng,
         speed: speedReadings.find((r: any) => r.station_id === station.id)?.value ?? null,
         direction: dirReadings.find((r: any) => r.station_id === station.id)?.value ?? null
       }));

@@ -1,4 +1,4 @@
-import { generateHourlyReport } from '../app/api/cron/hourly-report/route';
+import { generateHourlyReport } from '../lib/report-generator';
 import dotenv from 'dotenv';
 dotenv.config();
 

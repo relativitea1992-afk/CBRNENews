@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { NEA_WIND_STATIONS } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic'; // Always fetch fresh data
 
@@ -21,20 +22,19 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Invalid data from NEA' }, { status: 500 });
       }
 
-      const stations = speedData.metadata.stations;
-      const speedReadings = speedData.items[0].readings;
-      const dirReadings = dirData.items[0].readings;
+      const speedReadings = speedData.items[0].readings || [];
+      const dirReadings = dirData.items[0].readings || [];
 
-      // Merge data
-      const windData = stations.map((station: any) => {
+      // Merge data using master list so offline stations are still returned with null values
+      const windData = NEA_WIND_STATIONS.map((station) => {
         const speed = speedReadings.find((r: any) => r.station_id === station.id)?.value ?? null;
         const direction = dirReadings.find((r: any) => r.station_id === station.id)?.value ?? null;
         
         return {
           id: station.id,
           name: station.name,
-          lat: station.location.latitude,
-          lng: station.location.longitude,
+          lat: station.lat,
+          lng: station.lng,
           speed: speed, // knots or knots-equivalent, api doesn't specify unit, usually knots
           direction: direction // degrees
         };

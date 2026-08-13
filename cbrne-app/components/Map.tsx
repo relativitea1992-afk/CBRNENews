@@ -53,7 +53,6 @@ export default function Map({
   const searchParams = useSearchParams();
   const isSnapshot = searchParams.get('snapshot') === 'true';
   const hideOverlay = searchParams.get('hideoverlay') === 'true';
-  const [isOverlayCollapsed, setIsOverlayCollapsed] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -184,16 +183,17 @@ export default function Map({
         
         const arrowHtml = renderToString(
           <div style={{
-            transform: `rotate(${(station.direction + 180) % 360}deg)`,
-            color: '#22d3ee', // cyan-400
+            transform: `rotate(${(station.direction !== null ? station.direction + 180 : 0) % 360}deg)`,
+            color: station.speed !== null ? '#22d3ee' : '#64748b', // cyan-400 or slate-500
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '24px',
             height: '24px',
-            textShadow: '0 0 5px rgba(0,0,0,0.8)'
+            textShadow: '0 0 5px rgba(0,0,0,0.8)',
+            opacity: station.speed !== null ? 1 : 0.5
           }}>
-            <Navigation size={24} fill="#0891b2" />
+            <Navigation size={24} fill={station.speed !== null ? "#0891b2" : "#475569"} />
           </div>
         );
 
@@ -211,14 +211,14 @@ export default function Map({
             position={[station.lat, station.lng]}
             icon={arrowIcon}
           >
-            <Tooltip permanent direction="top" offset={[0, -10]} className="bg-transparent border-none shadow-none text-cyan-300 font-bold text-[10px] p-0 mt-2">
-              {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : ''}
+            <Tooltip permanent direction="top" offset={[0, -10]} className={`bg-transparent border-none shadow-none ${station.speed !== null ? 'text-cyan-300' : 'text-slate-500'} font-bold text-[10px] p-0 mt-2`}>
+              {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'Offline'}
             </Tooltip>
             <Popup className="bg-slate-800 text-white rounded-md border-none">
               <div className="p-2 max-w-xs text-slate-800">
                 <h3 className="font-bold text-sm mb-1">{station.name}</h3>
-                <p className="text-xs">Speed: {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'N/A'}</p>
-                <p className="text-xs">Direction: {station.direction !== null ? `${station.direction}°` : 'N/A'}</p>
+                <p className="text-xs">Speed: {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'Offline'}</p>
+                <p className="text-xs">Direction: {station.direction !== null ? `${station.direction}°` : 'Offline'}</p>
               </div>
             </Popup>
           </Marker>
@@ -255,28 +255,13 @@ export default function Map({
 
       {/* Control Panel Overlay for Status Lists */}
       {!hideOverlay && (showWind || showPm25) && (
-        <div className={`absolute top-4 right-4 bg-slate-900/60 backdrop-blur border border-slate-700 rounded-lg shadow-xl z-[1000] custom-scrollbar transition-all duration-300 ${isOverlayCollapsed ? 'w-48 p-2' : 'w-64 p-4 max-h-[60vh] overflow-y-auto'}`}>
+        <div className="absolute top-4 right-4 bg-slate-900/60 backdrop-blur border border-slate-700 p-4 rounded-lg shadow-xl z-[1000] w-64 max-h-[60vh] overflow-y-auto custom-scrollbar">
           
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Status Panels</span>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setIsOverlayCollapsed(!isOverlayCollapsed); }}
-              className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded p-1 transition-colors"
-              title={isOverlayCollapsed ? "Expand" : "Collapse"}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {isOverlayCollapsed ? <polyline points="6 9 12 15 18 9"></polyline> : <polyline points="18 15 12 9 6 15"></polyline>}
-              </svg>
-            </button>
-          </div>
-
-          {!isOverlayCollapsed && (
-            <>
-              {showWind && (
-                <div className="mb-4">
-                  <h4 className="font-semibold text-cyan-400 mb-2 border-b border-slate-700 pb-1 sticky top-0 bg-slate-900/95 flex items-center gap-1">
-                    <Navigation size={14} /> NEA Weather Stations
-                  </h4>
+          {showWind && (
+            <div className="mb-4">
+              <h4 className="font-semibold text-cyan-400 mb-2 border-b border-slate-700 pb-1 sticky top-0 bg-slate-900/95 flex items-center gap-1">
+                <Navigation size={14} /> NEA Weather Stations
+              </h4>
               {windError ? (
                 <p className="text-xs text-red-400">{windError}</p>
               ) : windData.length === 0 ? (
@@ -284,10 +269,10 @@ export default function Map({
               ) : (
                 <ul className="text-xs space-y-1.5 text-slate-300">
                   {windData.map(s => (
-                    <li key={s.id} className="flex justify-between items-center bg-slate-800/50 p-1.5 rounded">
+                    <li key={s.id} className={`flex justify-between items-center bg-slate-800/50 p-1.5 rounded ${s.speed === null ? 'opacity-50' : ''}`}>
                       <span className="truncate w-1/2" title={s.name}>{s.name}</span>
                       <span className="w-1/2 text-right font-mono text-[10px]">
-                        {s.speed !== null ? `${(s.speed * 1.852).toFixed(1)}km/h` : '-'} {s.direction !== null ? `${s.direction}°` : '-'}
+                        {s.speed !== null ? `${(s.speed * 1.852).toFixed(1)}km/h ${s.direction !== null ? `${s.direction}°` : ''}` : 'Offline'}
                       </span>
                     </li>
                   ))}
@@ -325,8 +310,6 @@ export default function Map({
                 </ul>
               )}
             </div>
-          )}
-          </>
           )}
         </div>
       )}

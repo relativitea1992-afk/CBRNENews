@@ -98,12 +98,12 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
   const [windError, setWindError] = useState<string|null>(null);
   const [pm25Error, setPm25Error] = useState<string|null>(null);
 
-  const fetchWindData = async () => {
-    if (windData.length > 0) return;
+  const fetchWindData = async (force = false) => {
+    if (!force && windData.length > 0) return;
     setIsLoadingWind(true);
     setWindError(null);
     try {
-      const res = await fetch('/api/env-data?type=wind');
+      const res = await fetch('/api/env-data?type=wind' + (force ? '&_=' + Date.now() : ''));
       const data = await res.json();
       if (data.data) {
         setWindData(data.data);
@@ -133,17 +133,12 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
     }
   }, []);
 
-  const togglePm25 = async () => {
-    if (showPm25) {
-      setShowPm25(false);
-      return;
-    }
-    setShowPm25(true);
-    if (pm25Data.length > 0) return; // already fetched
+  const fetchPm25Data = async (force = false) => {
+    if (!force && pm25Data.length > 0) return;
     setIsLoadingPm25(true);
     setPm25Error(null);
     try {
-      const res = await fetch('/api/env-data?type=pm25');
+      const res = await fetch('/api/env-data?type=pm25' + (force ? '&_=' + Date.now() : ''));
       const data = await res.json();
       if (data.data) {
         setPm25Data(data.data);
@@ -157,10 +152,26 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
     }
   };
 
-  const handleRefresh = () => {
+  const togglePm25 = () => {
+    if (showPm25) {
+      setShowPm25(false);
+    } else {
+      setShowPm25(true);
+      fetchPm25Data();
+    }
+  };
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    router.refresh();
-    setTimeout(() => setIsRefreshing(false), 1000); // small visual delay
+    router.refresh(); // Refresh incidents via server action/RSC
+    
+    // Concurrently fetch active overlay data explicitly
+    const promises = [];
+    if (showWind) promises.push(fetchWindData(true));
+    if (showPm25) promises.push(fetchPm25Data(true));
+    
+    await Promise.all(promises);
+    setTimeout(() => setIsRefreshing(false), 500); // small visual delay
   };
 
   const handleClearAlerts = async () => {
