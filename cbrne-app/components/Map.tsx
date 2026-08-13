@@ -182,7 +182,7 @@ export default function Map({
         
         const arrowHtml = renderToString(
           <div style={{
-            transform: `rotate(${station.direction || 0}deg)`,
+            transform: `rotate(${(station.direction + 180) % 360}deg)`,
             color: '#22d3ee', // cyan-400
             display: 'flex',
             alignItems: 'center',
