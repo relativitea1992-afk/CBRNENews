@@ -25,51 +25,7 @@ interface Incident {
   advisory: string | null;
 }
 
-export function StaticSnapshotMap({ incidents, windData = [] }: { incidents: Incident[], windData?: any[] }) {
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
-  
-  const incidentPt = incidents
-    .filter(i => i.latitude && i.longitude)
-    .map(i => {
-      let color = 'pm2rdm'; // default red
-      if (i.type === 'Odour') color = 'pm2ylm';
-      else if (i.type === 'Chemical') color = 'pm2vvm';
-      else if (i.type === 'Biological') color = 'pm2grm';
-      else if (i.type === 'Nuclear' || i.type === 'Radiological') color = 'pm2orm';
-      else if (i.type === 'Explosive') color = 'pm2rdm';
-      else if (i.type === 'Haze / Air Quality') color = 'pm2bwm';
-      return `${i.longitude},${i.latitude},${color}`;
-    })
-    .join('~');
-    
-  const windPt = windData
-    .filter(w => w.lat && w.lng)
-    .map(w => `${w.lng},${w.lat},pm2lbm`)
-    .join('~');
-    
-  const ptParam = [incidentPt, windPt].filter(Boolean).join('~');
-  
-  const ptQuery = ptParam ? `&pt=${ptParam}` : '';
-  const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=11&l=map&lang=en_US&size=650,450${ptQuery}`;
-  
-  return (
-    <div className="absolute inset-0 z-0 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img 
-          src={staticMapUrl} 
-          alt="Static Map" 
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-          onLoad={() => setIsImageLoaded(true)} 
-          onError={(e) => {
-            console.error('Static map failed to load', e);
-            setIsImageLoaded(true); // Fallback so we don't timeout forever
-          }} 
-      />
-      {isImageLoaded && <div id="map-ready" className="hidden"></div>}
-    </div>
-  );
-}
-
+// Yandex Static API fallback removed in favor of always rendering Leaflet
 const getTypeConfig = (type: string) => {
   switch (type) {
     case 'Odour': return { color: '#eab308', icon: <Wind size={16} /> }; // yellow
@@ -308,7 +264,7 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
 
         {/* Right Panel: Map */}
         <section className="w-full lg:w-2/3 h-[50vh] min-h-[50vh] lg:h-full lg:min-h-[calc(100vh-120px)] relative rounded-xl overflow-hidden glass-panel border border-slate-700/50 shadow-lg">
-          {isSnapshot ? <StaticSnapshotMap incidents={incidents} windData={initialWindData} /> : <MapWithNoSSR incidents={incidents} windData={showWind ? windData : []} pm25Data={showPm25 ? pm25Data : []} showWind={showWind} showPm25={showPm25} windError={windError} pm25Error={pm25Error} />}
+          <MapWithNoSSR incidents={incidents} windData={isSnapshot ? initialWindData : (showWind ? windData : [])} pm25Data={showPm25 ? pm25Data : []} showWind={showWind || isSnapshot} showPm25={showPm25} windError={windError} pm25Error={pm25Error} />
           
           {/* Map Legend Overlay */}
           <div className="absolute bottom-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl z-[1000] text-xs">

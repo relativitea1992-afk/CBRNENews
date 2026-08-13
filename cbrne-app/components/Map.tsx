@@ -62,49 +62,13 @@ export default function Map({
 
   const center: [number, number] = [1.3521, 103.8198]; // Singapore center
   
-  const tileUrl = isSnapshot 
+  const tileUrl = hideOverlay 
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
     : "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}";
     
-  const attribution = isSnapshot
+  const attribution = hideOverlay
     ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
     : '&copy; <a href="https://maps.google.com">Google Maps</a>';
-
-  if (isSnapshot) {
-    const ptParam = incidents
-      .filter(i => i.latitude && i.longitude)
-      .map(i => {
-        let color = 'pm2rdm'; // default red
-        if (i.type === 'Odour') color = 'pm2ylm';
-        else if (i.type === 'Chemical') color = 'pm2vvm';
-        else if (i.type === 'Biological') color = 'pm2grm';
-        else if (i.type === 'Nuclear' || i.type === 'Radiological') color = 'pm2orm';
-        else if (i.type === 'Explosive') color = 'pm2rdm';
-        else if (i.type === 'Haze / Air Quality') color = 'pm2bwm';
-        return `${i.longitude},${i.latitude},${color}`;
-      })
-      .join('~');
-    
-    const ptQuery = ptParam ? `&pt=${ptParam}` : '';
-    const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=103.8198,1.3521&z=11&l=map&lang=en_US&size=650,450${ptQuery}`;
-    
-    return (
-      <div className="absolute inset-0 z-0 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img 
-           src={staticMapUrl} 
-           alt="Static Map" 
-           style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-           onLoad={() => setIsImageLoaded(true)} 
-           onError={(e) => {
-             console.error('Static map failed to load', e);
-             setIsImageLoaded(true); // Fallback so we don't timeout forever
-           }} 
-        />
-        {isImageLoaded && <div id="map-ready" className="hidden"></div>}
-      </div>
-    );
-  }
 
   return (
     <MapContainer 
