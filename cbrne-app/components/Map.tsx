@@ -109,7 +109,8 @@ export default function Map({
   return (
     <MapContainer 
       center={center} 
-      zoom={11} 
+      zoom={hideOverlay ? 10.5 : 11} 
+      zoomSnap={0.5}
       scrollWheelZoom={true} 
       className="absolute inset-0 z-0 rounded-xl"
       style={{ height: '100%', width: '100%', background: '#0f172a' }} // Matches bg-slate-900
