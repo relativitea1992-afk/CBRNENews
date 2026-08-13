@@ -31,22 +31,9 @@ export default async function Home(
   let initialWindData: any[] = [];
   if (isSnapshot) {
     try {
-      const [speedRes, dirRes] = await Promise.all([
-        fetch('https://api.data.gov.sg/v1/environment/wind-speed', { next: { revalidate: 60 } }),
-        fetch('https://api.data.gov.sg/v1/environment/wind-direction', { next: { revalidate: 60 } })
-      ]);
-      const speedData = await speedRes.json();
-      const dirData = await dirRes.json();
-      const speedReadings = speedData.items[0].readings || [];
-      const dirReadings = dirData.items[0].readings || [];
-      initialWindData = NEA_WIND_STATIONS.map((station) => ({
-        id: station.id,
-        name: station.name,
-        lat: station.lat,
-        lng: station.lng,
-        speed: speedReadings.find((r: any) => r.station_id === station.id)?.value ?? null,
-        direction: dirReadings.find((r: any) => r.station_id === station.id)?.value ?? null
-      }));
+      const { fetchWindDataWithFallback } = await import('@/lib/env-data');
+      const { data } = await fetchWindDataWithFallback();
+      initialWindData = data;
     } catch (e) {
       console.error('Failed to fetch initial wind data for snapshot', e);
     }

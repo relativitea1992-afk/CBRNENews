@@ -9,38 +9,9 @@ export async function GET(request: Request) {
 
   try {
     if (type === 'wind') {
-      // Fetch wind speed and direction in parallel
-      const [speedRes, dirRes] = await Promise.all([
-        fetch('https://api.data.gov.sg/v1/environment/wind-speed', { next: { revalidate: 60 } }),
-        fetch('https://api.data.gov.sg/v1/environment/wind-direction', { next: { revalidate: 60 } })
-      ]);
-
-      const speedData = await speedRes.json();
-      const dirData = await dirRes.json();
-
-      if (!speedData.items || !dirData.items) {
-        return NextResponse.json({ error: 'Invalid data from NEA' }, { status: 500 });
-      }
-
-      const speedReadings = speedData.items[0].readings || [];
-      const dirReadings = dirData.items[0].readings || [];
-
-      // Merge data using master list so offline stations are still returned with null values
-      const windData = NEA_WIND_STATIONS.map((station) => {
-        const speed = speedReadings.find((r: any) => r.station_id === station.id)?.value ?? null;
-        const direction = dirReadings.find((r: any) => r.station_id === station.id)?.value ?? null;
-        
-        return {
-          id: station.id,
-          name: station.name,
-          lat: station.lat,
-          lng: station.lng,
-          speed: speed, // knots or knots-equivalent, api doesn't specify unit, usually knots
-          direction: direction // degrees
-        };
-      });
-
-      return NextResponse.json({ data: windData, timestamp: speedData.items[0].timestamp });
+      const { fetchWindDataWithFallback } = await import('@/lib/env-data');
+      const { data, timestamp } = await fetchWindDataWithFallback();
+      return NextResponse.json({ data, timestamp });
 
     } else if (type === 'pm25') {
       const pm25Res = await fetch('https://api.data.gov.sg/v1/environment/pm25', { next: { revalidate: 60 } });

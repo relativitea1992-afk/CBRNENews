@@ -87,6 +87,13 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
   const router = useRouter();
   const [isClearing, setIsClearing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Environmental Data State
   const [showWind, setShowWind] = useState(true);
@@ -194,7 +201,14 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
           <h1 className="text-2xl font-bold tracking-tight text-glow flex items-center gap-2">
             <span className="text-neon-blue">CBRNE</span> OSINT Dashboard
           </h1>
-          <p className="text-sm text-slate-400">Singapore Regional Threat Intelligence</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-slate-400">Singapore Regional Threat Intelligence</p>
+            {currentTime && (
+              <span className="text-xs text-slate-300 font-mono bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700 shadow-sm ml-2">
+                {currentTime.toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'medium' })}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-6">
           <button 
