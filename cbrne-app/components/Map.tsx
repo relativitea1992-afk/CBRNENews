@@ -53,6 +53,7 @@ export default function Map({
   const searchParams = useSearchParams();
   const isSnapshot = searchParams.get('snapshot') === 'true';
   const hideOverlay = searchParams.get('hideoverlay') === 'true';
+  const [isOverlayCollapsed, setIsOverlayCollapsed] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -109,8 +110,7 @@ export default function Map({
   return (
     <MapContainer 
       center={center} 
-      zoom={hideOverlay ? 10.5 : 11} 
-      zoomSnap={0.5}
+      zoom={11} 
       scrollWheelZoom={true} 
       className="absolute inset-0 z-0 rounded-xl"
       style={{ height: '100%', width: '100%', background: '#0f172a' }} // Matches bg-slate-900
@@ -255,13 +255,28 @@ export default function Map({
 
       {/* Control Panel Overlay for Status Lists */}
       {!hideOverlay && (showWind || showPm25) && (
-        <div className="absolute top-4 right-4 bg-slate-900/60 backdrop-blur border border-slate-700 p-4 rounded-lg shadow-xl z-[1000] w-64 max-h-[60vh] overflow-y-auto custom-scrollbar">
+        <div className={`absolute top-4 right-4 bg-slate-900/60 backdrop-blur border border-slate-700 rounded-lg shadow-xl z-[1000] custom-scrollbar transition-all duration-300 ${isOverlayCollapsed ? 'w-48 p-2' : 'w-64 p-4 max-h-[60vh] overflow-y-auto'}`}>
           
-          {showWind && (
-            <div className="mb-4">
-              <h4 className="font-semibold text-cyan-400 mb-2 border-b border-slate-700 pb-1 sticky top-0 bg-slate-900/95 flex items-center gap-1">
-                <Navigation size={14} /> NEA Weather Stations
-              </h4>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Status Panels</span>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsOverlayCollapsed(!isOverlayCollapsed); }}
+              className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded p-1 transition-colors"
+              title={isOverlayCollapsed ? "Expand" : "Collapse"}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {isOverlayCollapsed ? <polyline points="6 9 12 15 18 9"></polyline> : <polyline points="18 15 12 9 6 15"></polyline>}
+              </svg>
+            </button>
+          </div>
+
+          {!isOverlayCollapsed && (
+            <>
+              {showWind && (
+                <div className="mb-4">
+                  <h4 className="font-semibold text-cyan-400 mb-2 border-b border-slate-700 pb-1 sticky top-0 bg-slate-900/95 flex items-center gap-1">
+                    <Navigation size={14} /> NEA Weather Stations
+                  </h4>
               {windError ? (
                 <p className="text-xs text-red-400">{windError}</p>
               ) : windData.length === 0 ? (
@@ -310,6 +325,8 @@ export default function Map({
                 </ul>
               )}
             </div>
+          )}
+          </>
           )}
         </div>
       )}
