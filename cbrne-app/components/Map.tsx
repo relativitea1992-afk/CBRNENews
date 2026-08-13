@@ -211,7 +211,7 @@ export default function Map({
             position={[station.lat, station.lng]}
             icon={arrowIcon}
           >
-            <Tooltip permanent direction="top" offset={[0, -10]} className={`bg-transparent border-none shadow-none ${station.speed !== null ? 'text-cyan-300' : 'text-slate-500'} font-bold text-[10px] p-0 mt-2`}>
+            <Tooltip permanent direction="top" offset={[0, -10]} className={`!bg-white/50 !border-none !shadow-sm backdrop-blur-sm ${station.speed !== null ? '!text-black' : '!text-slate-600'} font-bold text-[10px] px-1.5 py-0.5 rounded mt-2`}>
               {station.speed !== null ? `${(station.speed * 1.852).toFixed(1)} km/h` : 'Offline'}
             </Tooltip>
             <Popup className="bg-slate-800 text-white rounded-md border-none">
