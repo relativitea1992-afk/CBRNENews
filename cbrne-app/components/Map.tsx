@@ -52,6 +52,7 @@ export default function Map({
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const searchParams = useSearchParams();
   const isSnapshot = searchParams.get('snapshot') === 'true';
+  const hideOverlay = searchParams.get('hideoverlay') === 'true';
 
   useEffect(() => {
     setMounted(true);
@@ -252,7 +253,7 @@ export default function Map({
       })}
 
       {/* Control Panel Overlay for Status Lists */}
-      {!isSnapshot && (showWind || showPm25) && (
+      {!hideOverlay && (showWind || showPm25) && (
         <div className="absolute top-4 right-4 bg-slate-900/60 backdrop-blur border border-slate-700 p-4 rounded-lg shadow-xl z-[1000] w-64 max-h-[60vh] overflow-y-auto custom-scrollbar">
           
           {showWind && (
