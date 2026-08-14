@@ -43,9 +43,9 @@ export async function geminiGenerate(options: GeminiRequestOptions): Promise<Gem
         ...(options.config ? { config: options.config } : {}),
       });
 
-      // 60-second timeout per model
+      // 30-second timeout per model
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Timeout: Model ${model} took longer than 60s to respond`)), 60000);
+        setTimeout(() => reject(new Error(`Timeout: Model ${model} took longer than 30s to respond`)), 30000);
       });
 
       const response = await Promise.race([generatePromise, timeoutPromise]) as any;
