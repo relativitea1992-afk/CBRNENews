@@ -281,14 +281,23 @@ export async function generateHourlyReport() {
       const readings = data.data.readings;
       const total = Math.max(stations.length, expectedTotal);
       
+      const KNOWN_STATIONS = [
+        'Marina Gardens Drive', 'Ang Mo Kio Avenue 5', 'Pulau Ubin', 'Banyan Road', 
+        'East Coast Parkway', 'Woodlands Avenue 9', 'Tuas South Avenue 3', 'West Coast Highway', 
+        'Semakau Island Landfill', 'Sentosa', 'Clementi Road', 'Nanyang Avenue', 
+        'Kim Chuan Road', 'S23', 'Paya Lebar Airport', 'Scotts Road', 'Old Choa Chu Kang Road'
+      ];
+
       if (readings.length === 0) return { total, active: 0, missing: stations.map((s: any) => ({ name: s.name, downSince: 'start of day' })) };
 
       const missingInfo: any[] = [];
       let activeCount = 0;
       
       const latestApiTime = new Date(readings[0].timestamp).getTime();
+      const seenStationNames = new Set<string>();
 
       for (const station of stations) {
+        seenStationNames.add(station.name);
         let lastSeenIndex = -1;
         for (let i = 0; i < readings.length; i++) {
             const rData = readings[i].data || [];
@@ -321,6 +330,12 @@ export async function generateHourlyReport() {
                 activeCount++;
             }
         }
+      }
+
+      for (const name of KNOWN_STATIONS) {
+          if (!seenStationNames.has(name)) {
+              missingInfo.push({ name, downSince: 'API omitted' });
+          }
       }
 
       return { total, active: activeCount, missing: missingInfo };
