@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { sendTelegramMessage } from '@/lib/telegram';
 import { geminiGenerate, checkAllModels } from '@/lib/gemini-client';
 import { extract } from '@extractus/article-extractor';
+import { fetchWithTimeout } from '@/lib/fetch-utils';
 
 export const maxDuration = 300;
 export const preferredRegion = 'sin1';
@@ -98,7 +99,7 @@ export async function generateHourlyReport() {
     const newsApiKey = process.env.NEWSAPI_KEY;
     if (newsApiKey) {
       const start = Date.now();
-      const res = await fetch(`https://newsapi.org/v2/everything?q=singapore&sortBy=publishedAt&language=en&pageSize=10&apiKey=${newsApiKey}`);
+      const res = await fetchWithTimeout(`https://newsapi.org/v2/everything?q=singapore&sortBy=publishedAt&language=en&pageSize=10&apiKey=${newsApiKey}`, {}, 60000);
       const latency = Date.now() - start;
       if (res.ok) {
         newsApiStatus = `✅ ONLINE (${latency}ms)`;
@@ -145,7 +146,7 @@ export async function generateHourlyReport() {
   await Promise.all(cnaFeeds.map(async (feed) => {
     try {
       const start = Date.now();
-      const res = await fetch(feed.url);
+      const res = await fetchWithTimeout(feed.url, {}, 60000);
       const latency = Date.now() - start;
       if (res.ok) {
         cnaSuccessCount++;
@@ -205,7 +206,7 @@ export async function generateHourlyReport() {
   await Promise.all(stFeeds.map(async (feed) => {
     try {
       const start = Date.now();
-      const res = await fetch(feed.url);
+      const res = await fetchWithTimeout(feed.url, {}, 60000);
       const latency = Date.now() - start;
       if (res.ok) {
         stSuccessCount++;
@@ -266,9 +267,9 @@ export async function generateHourlyReport() {
     const dateStr = new Date(Date.now() + 8*60*60*1000).toISOString().split('T')[0];
     const start = Date.now();
     const envDataPromise = await Promise.all([
-      fetch('https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=' + dateStr).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
-      fetch('https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=' + dateStr).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
-      fetch('https://api-open.data.gov.sg/v2/real-time/api/pm25?date=' + dateStr).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null)
+      fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=' + dateStr, {}, 60000).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
+      fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=' + dateStr, {}, 60000).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
+      fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/pm25?date=' + dateStr, {}, 60000).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null)
     ]);
     const latency = Date.now() - start;
 
@@ -409,7 +410,7 @@ export async function generateHourlyReport() {
         // Only 1 reading today (e.g. just past midnight), fetch yesterday's last reading for the trend
         try {
           const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleString('en-CA', { timeZone: 'Asia/Singapore' }).split(',')[0];
-          const prevDayRes = await fetch('https://api-open.data.gov.sg/v2/real-time/api/pm25?date=' + yesterdayStr);
+          const prevDayRes = await fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/pm25?date=' + yesterdayStr, {}, 60000);
           const prevDayText = await prevDayRes.text();
           ingressBytes += Buffer.byteLength(prevDayText, 'utf8');
           const prevDayData = JSON.parse(prevDayText);
@@ -654,7 +655,10 @@ ${newsContent}`,
       let fullTextContext = '';
       await Promise.all(selectedUrls.map(async (url) => {
           try {
-             const extracted = await extract(url);
+             const timeoutPromise = new Promise<never>((_, reject) => {
+               setTimeout(() => reject(new Error('Extraction timed out')), 15000);
+             });
+             const extracted = await Promise.race([extract(url), timeoutPromise]) as any;
              if (extracted && extracted.content) {
                 ingressBytes += Buffer.byteLength(extracted.content, 'utf8');
                 const clean = extracted.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').substring(0, 4000);
@@ -818,14 +822,27 @@ ${geminiStatusSection}<b>NewsAPI Link:</b> ${newsApiStatus}
 
   const MAX_LEN = 4000;
   if (reportMsgPart1.length > MAX_LEN) {
-    const excess = reportMsgPart1.substring(MAX_LEN);
-    reportMsgPart1 = reportMsgPart1.substring(0, MAX_LEN);
+    let splitIndex = reportMsgPart1.lastIndexOf('\n\n', MAX_LEN);
+    if (splitIndex === -1) {
+      splitIndex = reportMsgPart1.lastIndexOf('\n', MAX_LEN);
+    }
+    if (splitIndex === -1 || splitIndex < 2000) {
+      splitIndex = MAX_LEN;
+    }
+
+    const excess = reportMsgPart1.substring(splitIndex);
+    reportMsgPart1 = reportMsgPart1.substring(0, splitIndex);
     
+    let safeExcess = excess;
+    if (safeExcess.length > 3500) {
+      safeExcess = safeExcess.substring(0, 3500) + '\n\n...[TRUNCATED DUE TO LENGTH LIMIT]...';
+    }
+
     // Reconstruct Part 2 with the excess text prepended
     reportMsgPart2 = `📊 <b>SYSTEM HOURLY REPORT (Part 2/2)</b> 📊
 
 ...[Continuation from Part 1]
-${excess}
+${safeExcess}
 
 <b>System Linkages & APIs</b>
 <b>Gemini AI Engine:</b>

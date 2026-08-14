@@ -37,11 +37,19 @@ export async function geminiGenerate(options: GeminiRequestOptions): Promise<Gem
 
   for (const model of MODEL_FALLBACK_CHAIN) {
     try {
-      const response = await ai.models.generateContent({
+      const generatePromise = ai.models.generateContent({
         model,
         contents: options.contents,
         ...(options.config ? { config: options.config } : {}),
       });
+
+      // 60-second timeout per model
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Timeout: Model ${model} took longer than 60s to respond`)), 60000);
+      });
+
+      const response = await Promise.race([generatePromise, timeoutPromise]) as any;
+
       return { text: response.text, modelUsed: model, usageMetadata: response.usageMetadata };
     } catch (error: any) {
       lastError = error;
