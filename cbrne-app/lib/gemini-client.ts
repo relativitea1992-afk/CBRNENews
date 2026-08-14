@@ -7,8 +7,10 @@ const ai = new GoogleGenAI({
 // Priority-ordered list of models to try. If the first model fails (rate limit,
 // unavailable, etc.), the next one is attempted automatically.
 const MODEL_FALLBACK_CHAIN = [
+  'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
+  'gemini-3.0-flash',
   'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
   'gemma-4-31b-it',
