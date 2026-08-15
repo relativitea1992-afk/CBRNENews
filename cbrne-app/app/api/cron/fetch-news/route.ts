@@ -152,8 +152,9 @@ export async function GET(request: Request) {
 
   after(async () => {
     try {
-      let totalPromptTokens = 0;
-      let totalCandidatesTokens = 0;
+      let triageTokens = { total: 0, prompt: 0, candidate: 0 };
+      let reportTokens = { total: 0, prompt: 0, candidate: 0 };
+      let clusterTokens = { total: 0, prompt: 0, candidate: 0 };
       let totalWordCount = 0;
 
       // Filter unread articles
@@ -185,8 +186,9 @@ export async function GET(request: Request) {
         
         modelsUsed.add(batchResult.modelUsed);
         if (batchResult.usageMetadata) {
-          totalPromptTokens += batchResult.usageMetadata.promptTokenCount || 0;
-          totalCandidatesTokens += batchResult.usageMetadata.candidatesTokenCount || 0;
+          triageTokens.prompt += batchResult.usageMetadata.promptTokenCount || 0;
+          triageTokens.candidate += batchResult.usageMetadata.candidatesTokenCount || 0;
+          triageTokens.total += batchResult.usageMetadata.totalTokenCount || 0;
         }
 
         // Process each result in the chunk
@@ -232,9 +234,10 @@ export async function GET(request: Request) {
              
              if (pass2Result) {
                triage = pass2Result;
-               if (pass2Result.usageMetadata) {
-                 totalPromptTokens += pass2Result.usageMetadata.promptTokenCount || 0;
-                 totalCandidatesTokens += pass2Result.usageMetadata.candidatesTokenCount || 0;
+               if (pass2Result.pass2UsageMetadata) {
+                 reportTokens.prompt += pass2Result.pass2UsageMetadata.promptTokenCount || 0;
+                 reportTokens.candidate += pass2Result.pass2UsageMetadata.candidatesTokenCount || 0;
+                 reportTokens.total += pass2Result.pass2UsageMetadata.totalTokenCount || 0;
                }
              }
           }
@@ -259,8 +262,9 @@ export async function GET(request: Request) {
                if (clusterResult) {
                  if (clusterResult.clusterId) clusterId = clusterResult.clusterId;
                  if (clusterResult.usageMetadata) {
-                   totalPromptTokens += clusterResult.usageMetadata.promptTokenCount || 0;
-                   totalCandidatesTokens += clusterResult.usageMetadata.candidatesTokenCount || 0;
+                   clusterTokens.prompt += clusterResult.usageMetadata.promptTokenCount || 0;
+                   clusterTokens.candidate += clusterResult.usageMetadata.candidatesTokenCount || 0;
+                   clusterTokens.total += clusterResult.usageMetadata.totalTokenCount || 0;
                  }
                }
             }
@@ -367,8 +371,12 @@ ${triage.advisory ? `<b>Advisory:</b>\n${linkifyCoordinates(escapeHtml(triage.ad
     if (modelArray.some(m => m.includes('gemini')) && modelArray.some(m => m.includes('gemma'))) providerName = 'Gemini & Gemma';
     
     const modelsStr = modelsUsed.size > 0 ? ` via ${providerName} [${modelArray.join(', ')}]` : '';
+    
+    const totalPromptTokens = triageTokens.prompt + reportTokens.prompt + clusterTokens.prompt;
+    const totalCandidatesTokens = triageTokens.candidate + reportTokens.candidate + clusterTokens.candidate;
+    
     const tokenStr = (totalPromptTokens > 0 || totalCandidatesTokens > 0) 
-      ? ` | Tokens Consumed: ${totalPromptTokens + totalCandidatesTokens} [In: ${totalPromptTokens}, Out: ${totalCandidatesTokens}] | Models: ${modelArray.join(', ')}` 
+      ? ` | Tokens Consumed: ${totalPromptTokens + totalCandidatesTokens} [In: ${totalPromptTokens}, Out: ${totalCandidatesTokens}] | Triage: ${triageTokens.total} [In: ${triageTokens.prompt}, Out: ${triageTokens.candidate}] | Threat Report: ${reportTokens.total} [In: ${reportTokens.prompt}, Out: ${reportTokens.candidate}] | Clustering: ${clusterTokens.total} [In: ${clusterTokens.prompt}, Out: ${clusterTokens.candidate}] | Models: ${modelArray.join(', ')}` 
       : '';
     const bandwidthStr = ` | Ingress: ${ingressBytes} bytes | Egress: ${egressBytes} bytes`;
     const duration = Date.now() - startTime;

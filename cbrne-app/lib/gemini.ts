@@ -10,6 +10,7 @@ export interface TriageResult {
   advisory?: string;
   modelUsed?: string;
   usageMetadata?: any;
+  pass2UsageMetadata?: any;
   pm25Readings?: Record<string, number>;
   previousPm25Readings?: Record<string, number>;
 }
@@ -404,6 +405,7 @@ ${articleText}
         advisory: result2.advisory,
         modelUsed: response2.modelUsed || model1,
         usageMetadata: combinedUsage,
+        pass2UsageMetadata: response2.usageMetadata,
         pm25Readings,
         previousPm25Readings
       };

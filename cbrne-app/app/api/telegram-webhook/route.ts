@@ -99,6 +99,8 @@ export async function POST(request: NextRequest) {
           
           let totalTokens = 0, promptTokens = 0, candidateTokens = 0;
           let triagingTokens = { total: 0, prompt: 0, candidate: 0 };
+          let reportTokens = { total: 0, prompt: 0, candidate: 0 };
+          let clusteringTokens = { total: 0, prompt: 0, candidate: 0 };
           let assessmentTokens = { total: 0, prompt: 0, candidate: 0 };
           let headlineTokens = { total: 0, prompt: 0, candidate: 0 };
           const modelsUsage: Record<string, { total: number, prompt: number, candidate: number }> = {};
@@ -148,14 +150,14 @@ export async function POST(request: NextRequest) {
               const wordsMatch = detail.match(/Words: (\d+)/);
               if (wordsMatch) totalWordCount += parseInt(wordsMatch[1]);
 
-              // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Models: gemini-1.5-flash
-              const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Models: ([\w., -]+))?/);
+              // | Tokens Consumed: 1234 [In: 1000, Out: 234] | Triage: 500 [In: 400, Out: 100] | Threat Report: 500 [In: 400, Out: 100] | Clustering: 234 [In: 200, Out: 34] | Models: gemini-1.5-flash
+              const tokenMatch = detail.match(/Tokens Consumed: (\d+) \[In: (\d+), Out: (\d+)\](?: \| Triage: (\d+) \[In: (\d+), Out: (\d+)\] \| Threat Report: (\d+) \[In: (\d+), Out: (\d+)\] \| Clustering: (\d+) \[In: (\d+), Out: (\d+)\])?(?: \| Models: ([\w., -]+))?/);
               if (tokenMatch) {
                 const tot = parseInt(tokenMatch[1]);
                 const prm = parseInt(tokenMatch[2]);
                 const cnd = parseInt(tokenMatch[3]);
                 
-                let modelString = tokenMatch[4];
+                let modelString = tokenMatch[13];
                 if (!modelString) {
                    const fallbackMatch = detail.match(/via (?:Gemini|AI|Gemma|Gemini & Gemma) \[(.*?)\]/);
                    if (fallbackMatch) {
@@ -166,7 +168,23 @@ export async function POST(request: NextRequest) {
                 }
                 
                 totalTokens += tot; promptTokens += prm; candidateTokens += cnd;
-                triagingTokens.total += tot; triagingTokens.prompt += prm; triagingTokens.candidate += cnd;
+                
+                if (tokenMatch[4]) {
+                  triagingTokens.total += parseInt(tokenMatch[4]);
+                  triagingTokens.prompt += parseInt(tokenMatch[5]);
+                  triagingTokens.candidate += parseInt(tokenMatch[6]);
+                  
+                  reportTokens.total += parseInt(tokenMatch[7]);
+                  reportTokens.prompt += parseInt(tokenMatch[8]);
+                  reportTokens.candidate += parseInt(tokenMatch[9]);
+                  
+                  clusteringTokens.total += parseInt(tokenMatch[10]);
+                  clusteringTokens.prompt += parseInt(tokenMatch[11]);
+                  clusteringTokens.candidate += parseInt(tokenMatch[12]);
+                } else {
+                  // Fallback for older logs
+                  triagingTokens.total += tot; triagingTokens.prompt += prm; triagingTokens.candidate += cnd;
+                }
                 
                 const models = modelString.split(',').map(s => s.trim());
                 const splitTot = Math.round(tot / models.length);
@@ -314,7 +332,9 @@ export async function POST(request: NextRequest) {
           });
           
           msg += `\n<b>By Function:</b>\n`;
-          msg += `- Triage & Clustering: ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
+          msg += `- Batch Triage Scanning: ${formatTokens(triagingTokens.total)} tokens [In: ${formatTokens(triagingTokens.prompt)} | Out: ${formatTokens(triagingTokens.candidate)}]\n`;
+          msg += `- Threat Report Generation: ${formatTokens(reportTokens.total)} tokens [In: ${formatTokens(reportTokens.prompt)} | Out: ${formatTokens(reportTokens.candidate)}]\n`;
+          msg += `- Event Clustering: ${formatTokens(clusteringTokens.total)} tokens [In: ${formatTokens(clusteringTokens.prompt)} | Out: ${formatTokens(clusteringTokens.candidate)}]\n`;
           msg += `- Hourly System Pulse Summary: ${formatTokens(assessmentTokens.total)} tokens [In: ${formatTokens(assessmentTokens.prompt)} | Out: ${formatTokens(assessmentTokens.candidate)}]\n`;
           msg += `- Headline Selection: ${formatTokens(headlineTokens.total)} tokens [In: ${formatTokens(headlineTokens.prompt)} | Out: ${formatTokens(headlineTokens.candidate)}]\n\n`;
           
