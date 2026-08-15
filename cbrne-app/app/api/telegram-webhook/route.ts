@@ -19,18 +19,45 @@ export async function POST(request: NextRequest) {
     const forwardedFor = request.headers.get('x-forwarded-for');
     const telegramIp = forwardedFor ? forwardedFor.split(',')[0].trim() : (request.headers.get('x-real-ip') || 'Unknown');
     
-    // Check if it's a message with text
+    let text = '';
+    let chatId = '';
+    let requesterName = 'User';
+    let isCallback = false;
+    let callbackQueryId = '';
+
     if (body.message && body.message.text) {
-      const text = body.message.text.toLowerCase();
-      const chatId = body.message.chat.id.toString();
-      const requesterName = body.message?.from?.username 
+      text = body.message.text.toLowerCase();
+      chatId = body.message.chat.id.toString();
+      requesterName = body.message?.from?.username 
         ? `@${body.message.from.username}` 
         : (body.message?.from?.first_name || 'User');
+    } else if (body.callback_query) {
+      text = body.callback_query.data.toLowerCase();
+      chatId = body.callback_query.message.chat.id.toString();
+      requesterName = body.callback_query.from?.username 
+        ? `@${body.callback_query.from.username}` 
+        : (body.callback_query.from?.first_name || 'User');
+      isCallback = true;
+      callbackQueryId = body.callback_query.id;
+    }
 
+    // Check if we have a valid command or callback
+    if (text && chatId) {
       // Basic security: Only respond to our designated CHAT_ID
       if (chatId !== process.env.TELEGRAM_CHAT_ID) {
          console.warn(`Unauthorized chat ID attempted to use bot: ${chatId}`);
          return NextResponse.json({ success: true }); // Return 200 so Telegram stops retrying
+      }
+
+      if (isCallback) {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (token) {
+          fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: callbackQueryId })
+          }).catch(console.error);
+        }
       }
 
       let manualLogId: string | null = null;
@@ -483,13 +510,45 @@ export async function POST(request: NextRequest) {
           where: { isRelevant: true }
         });
         await sendTrackedMessage(chatId, `🧹 <b>Alerts Cleared:</b> ${deleted.count} active threat(s) have been removed from the dashboard.`);
-      } else if (text.startsWith('/snapshot') || text.startsWith('/pm2.5')) {
-        const isPm25 = text.startsWith('/pm2.5');
+      } else if (text === '/snapshot') {
+        await sendTrackedMessage(chatId, "📸 <b>Select Snapshot Type:</b>\nChoose which layers to include in the map snapshot:", {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "🗺️ Base Map (No layers)", callback_data: "/do_snapshot base" }
+              ],
+              [
+                { text: "💨 With Wind Data", callback_data: "/do_snapshot wind" }
+              ],
+              [
+                { text: "😶‍🌫️ With PM2.5 Data", callback_data: "/do_snapshot pm25" }
+              ],
+              [
+                { text: "🌍 With All Layers", callback_data: "/do_snapshot all" }
+              ]
+            ]
+          }
+        });
+      } else if (text.startsWith('/do_snapshot') || text.startsWith('/pm2.5')) {
+        const isPm25Command = text.startsWith('/pm2.5');
+        const mode = text.split(' ')[1] || 'all'; // base, wind, pm25, all
+        
+        let includeWind = true;
+        let includePm25 = false;
+        
+        if (isPm25Command) {
+           includeWind = true;
+           includePm25 = true;
+        } else {
+           includeWind = mode === 'wind' || mode === 'all';
+           includePm25 = mode === 'pm25' || mode === 'all';
+        }
+
         const dashboardBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
-        const dashboardUrl = `${dashboardBaseUrl}?hideoverlay=true&snapshot=true${isPm25 ? '&pm25=true' : ''}&t=${Date.now()}`;
+        const dashboardUrl = `${dashboardBaseUrl}?hideoverlay=true&snapshot=true&wind=${includeWind}&pm25=${includePm25}&t=${Date.now()}`;
         const microlinkUrl = `https://api.microlink.io?url=${encodeURIComponent(dashboardUrl)}&screenshot=true&meta=false&embed=screenshot.url&waitUntil=networkidle0&delay=5000&adblock=false&force=true`;
         
-        await sendTrackedMessage(chatId, `📸 <b>Taking ${isPm25 ? 'PM2.5 ' : ''}snapshot of the live dashboard...</b>`);
+        await sendTrackedMessage(chatId, `📸 <b>Taking snapshot of the live dashboard...</b>`);
         
         try {
           const imageReq = await fetch(microlinkUrl);
@@ -500,7 +559,7 @@ export async function POST(request: NextRequest) {
             const formData = new FormData();
             formData.append('chat_id', chatId);
             formData.append('photo', blob, 'dashboard.png');
-            formData.append('caption', `Live ${isPm25 ? 'PM2.5 ' : ''}Dashboard Snapshot: ${dashboardUrl}`);
+            formData.append('caption', `Live Dashboard Snapshot: ${dashboardUrl}`);
             
             const token = process.env.TELEGRAM_BOT_TOKEN;
             const photoResponse = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
@@ -513,15 +572,15 @@ export async function POST(request: NextRequest) {
             
             if (!photoResponse.ok) {
               console.error('Failed to send snapshot photo:', await photoResponse.text());
-              await sendTrackedMessage(chatId, `❌ Failed to send ${isPm25 ? 'PM2.5 ' : ''}dashboard snapshot photo.`);
+              await sendTrackedMessage(chatId, `❌ Failed to send dashboard snapshot photo.`);
             }
           } else {
             console.error('Failed to fetch snapshot from Microlink:', await imageReq.text());
-            await sendTrackedMessage(chatId, `❌ Failed to generate ${isPm25 ? 'PM2.5 ' : ''}dashboard snapshot.`);
+            await sendTrackedMessage(chatId, `❌ Failed to generate dashboard snapshot.`);
           }
         } catch (e) {
           console.error('Error generating snapshot:', e);
-          await sendTrackedMessage(chatId, `❌ Error generating ${isPm25 ? 'PM2.5 ' : ''}dashboard snapshot.`);
+          await sendTrackedMessage(chatId, `❌ Error generating dashboard snapshot.`);
         }
       } else if (text.startsWith('/pingtest')) {
         await sendTrackedMessage(chatId, "⏳ <b>Running System Diagnostics...</b>\nFetching IPs and calculating latency. This will take a few seconds.");
