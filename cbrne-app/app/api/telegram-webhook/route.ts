@@ -431,7 +431,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Check if this is a reply to the /resource prompt
-      if (body.message.reply_to_message && body.message.reply_to_message.from?.is_bot) {
+      if (body.message?.reply_to_message && body.message.reply_to_message.from?.is_bot) {
          const replyText = body.message.reply_to_message.text || '';
          if (replyText.includes("Please enter the number of days for the resource report")) {
             const parsed = parseInt(text);
