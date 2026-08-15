@@ -455,7 +455,7 @@ export async function generateHourlyReport() {
   // Find all active cluster IDs that had an update in the last 24h
   const recentUpdates = await prisma.incident.findMany({
     where: {
-      createdAt: { gte: twentyFourHoursAgo },
+      publishedAt: { gte: twentyFourHoursAgo },
       isRelevant: true,
     },
     select: { clusterId: true, id: true }
@@ -472,7 +472,7 @@ export async function generateHourlyReport() {
         { id: { in: activeClusterIds } } // Fallback for old standalone incidents
       ],
       isRelevant: true,
-      createdAt: { gte: sevenDaysAgo }
+      publishedAt: { gte: sevenDaysAgo }
     },
     orderBy: { publishedAt: 'asc' },
   });
