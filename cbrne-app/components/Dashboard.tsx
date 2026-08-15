@@ -39,7 +39,7 @@ const getTypeConfig = (type: string) => {
   }
 };
 
-export default function Dashboard({ incidents, isSnapshot = false, initialWindData = [] }: { incidents: Incident[], isSnapshot?: boolean, initialWindData?: any[] }) {
+export default function Dashboard({ incidents, isSnapshot = false, isPm25Snapshot = false, initialWindData = [], initialPm25Data = [] }: { incidents: Incident[], isSnapshot?: boolean, isPm25Snapshot?: boolean, initialWindData?: any[], initialPm25Data?: any[] }) {
   const router = useRouter();
   const [isClearing, setIsClearing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -54,8 +54,8 @@ export default function Dashboard({ incidents, isSnapshot = false, initialWindDa
   // Environmental Data State
   const [showWind, setShowWind] = useState(true);
   const [windData, setWindData] = useState<any[]>(initialWindData);
-  const [showPm25, setShowPm25] = useState(false);
-  const [pm25Data, setPm25Data] = useState<any[]>([]);
+  const [showPm25, setShowPm25] = useState(isPm25Snapshot);
+  const [pm25Data, setPm25Data] = useState<any[]>(initialPm25Data);
   const [isLoadingWind, setIsLoadingWind] = useState(false);
   const [isLoadingPm25, setIsLoadingPm25] = useState(false);
   const [windError, setWindError] = useState<string|null>(null);

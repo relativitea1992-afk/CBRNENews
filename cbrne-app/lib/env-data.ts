@@ -61,3 +61,27 @@ export async function fetchWindDataWithFallback() {
     timestamp: speedItems.length > 0 ? speedItems[speedItems.length - 1].timestamp : new Date().toISOString()
   };
 }
+
+export async function fetchPm25DataWithFallback() {
+  const pm25Res = await fetch('https://api.data.gov.sg/v1/environment/pm25', { next: { revalidate: 60 } });
+  const pm25Data = await pm25Res.json();
+
+  if (!pm25Data.items) {
+    throw new Error('Invalid data from NEA');
+  }
+
+  const regions = pm25Data.region_metadata;
+  const readings = pm25Data.items[0].readings.pm25_one_hourly;
+
+  const mergedData = regions.map((region: any) => ({
+    name: region.name,
+    lat: region.label_location.latitude,
+    lng: region.label_location.longitude,
+    value: readings[region.name] ?? null
+  }));
+
+  return {
+    data: mergedData,
+    timestamp: pm25Data.items[0].timestamp
+  };
+}

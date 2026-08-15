@@ -483,12 +483,13 @@ export async function POST(request: NextRequest) {
           where: { isRelevant: true }
         });
         await sendTrackedMessage(chatId, `🧹 <b>Alerts Cleared:</b> ${deleted.count} active threat(s) have been removed from the dashboard.`);
-      } else if (text.startsWith('/snapshot')) {
+      } else if (text.startsWith('/snapshot') || text.startsWith('/pm2.5')) {
+        const isPm25 = text.startsWith('/pm2.5');
         const dashboardBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
-        const dashboardUrl = `${dashboardBaseUrl}?hideoverlay=true&snapshot=true&t=${Date.now()}`;
+        const dashboardUrl = `${dashboardBaseUrl}?hideoverlay=true&snapshot=true${isPm25 ? '&pm25=true' : ''}&t=${Date.now()}`;
         const microlinkUrl = `https://api.microlink.io?url=${encodeURIComponent(dashboardUrl)}&screenshot=true&meta=false&embed=screenshot.url&waitUntil=networkidle0&delay=5000&adblock=false&force=true`;
         
-        await sendTrackedMessage(chatId, "📸 <b>Taking snapshot of the live dashboard...</b>");
+        await sendTrackedMessage(chatId, `📸 <b>Taking ${isPm25 ? 'PM2.5 ' : ''}snapshot of the live dashboard...</b>`);
         
         try {
           const imageReq = await fetch(microlinkUrl);
@@ -499,7 +500,7 @@ export async function POST(request: NextRequest) {
             const formData = new FormData();
             formData.append('chat_id', chatId);
             formData.append('photo', blob, 'dashboard.png');
-            formData.append('caption', `Live Dashboard Snapshot: ${dashboardUrl}`);
+            formData.append('caption', `Live ${isPm25 ? 'PM2.5 ' : ''}Dashboard Snapshot: ${dashboardUrl}`);
             
             const token = process.env.TELEGRAM_BOT_TOKEN;
             const photoResponse = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
@@ -512,15 +513,15 @@ export async function POST(request: NextRequest) {
             
             if (!photoResponse.ok) {
               console.error('Failed to send snapshot photo:', await photoResponse.text());
-              await sendTrackedMessage(chatId, "❌ Failed to send dashboard snapshot photo.");
+              await sendTrackedMessage(chatId, `❌ Failed to send ${isPm25 ? 'PM2.5 ' : ''}dashboard snapshot photo.`);
             }
           } else {
             console.error('Failed to fetch snapshot from Microlink:', await imageReq.text());
-            await sendTrackedMessage(chatId, "❌ Failed to generate dashboard snapshot.");
+            await sendTrackedMessage(chatId, `❌ Failed to generate ${isPm25 ? 'PM2.5 ' : ''}dashboard snapshot.`);
           }
         } catch (e) {
           console.error('Error generating snapshot:', e);
-          await sendTrackedMessage(chatId, "❌ Error generating dashboard snapshot.");
+          await sendTrackedMessage(chatId, `❌ Error generating ${isPm25 ? 'PM2.5 ' : ''}dashboard snapshot.`);
         }
       } else if (text.startsWith('/pingtest')) {
         await sendTrackedMessage(chatId, "⏳ <b>Running System Diagnostics...</b>\nFetching IPs and calculating latency. This will take a few seconds.");

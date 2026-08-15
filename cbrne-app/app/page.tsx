@@ -5,11 +5,12 @@ import { NEA_WIND_STATIONS } from '@/lib/constants';
 export const dynamic = 'force-dynamic';
 
 export default async function Home(
-  props: { searchParams?: Promise<{ snapshot?: string }> | { snapshot?: string } }
+  props: { searchParams?: Promise<{ snapshot?: string, pm25?: string }> | { snapshot?: string, pm25?: string } }
 ) {
   // In newer Next.js versions searchParams might be a Promise
   const searchParams = await props.searchParams;
   const isSnapshot = searchParams?.snapshot === 'true';
+  const isPm25Snapshot = searchParams?.pm25 === 'true';
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   
   const incidents = await prisma.incident.findMany({
@@ -29,15 +30,21 @@ export default async function Home(
   }));
 
   let initialWindData: any[] = [];
+  let initialPm25Data: any[] = [];
   if (isSnapshot) {
     try {
-      const { fetchWindDataWithFallback } = await import('@/lib/env-data');
-      const { data } = await fetchWindDataWithFallback();
-      initialWindData = data;
+      const { fetchWindDataWithFallback, fetchPm25DataWithFallback } = await import('@/lib/env-data');
+      const { data: windData } = await fetchWindDataWithFallback();
+      initialWindData = windData;
+      
+      if (isPm25Snapshot) {
+        const { data: pm25Data } = await fetchPm25DataWithFallback();
+        initialPm25Data = pm25Data;
+      }
     } catch (e) {
-      console.error('Failed to fetch initial wind data for snapshot', e);
+      console.error('Failed to fetch initial env data for snapshot', e);
     }
   }
 
-  return <Dashboard incidents={serializedIncidents} isSnapshot={isSnapshot} initialWindData={initialWindData} />;
+  return <Dashboard incidents={serializedIncidents} isSnapshot={isSnapshot} isPm25Snapshot={isPm25Snapshot} initialWindData={initialWindData} initialPm25Data={initialPm25Data} />;
 }
