@@ -40,6 +40,7 @@ export async function generateHourlyReport() {
       outcome = outcome.replace(/ \| Ingress: \d+ bytes/g, '');
       outcome = outcome.replace(/ \| Egress: \d+ bytes/g, '');
       outcome = outcome.replace(/ \| Compute: .*$/g, '');
+      outcome = outcome.replace(/ \| Triage: \d+ \[In: \d+, Out: \d+\] \| Threat Report: \d+ \[In: \d+, Out: \d+\] \| Clustering: \d+ \[In: \d+, Out: \d+\]/g, '');
 
       // Consolidate individual source names under "NewsAPI"
       outcome = outcome.replace(/\(([^)]+)\)/, (match: string, inner: string) => {
