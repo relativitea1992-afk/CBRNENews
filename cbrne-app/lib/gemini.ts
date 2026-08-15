@@ -288,9 +288,9 @@ Will likely affect Singapore within 24 hours: ${(windAligned && travelTimeHrs <=
 IMPORTANT RULES FOR YOUR ADVISORY:
 - You MUST state the distance (${Math.round(distToSG)} km) from the incident to Singapore.
 - You MUST reference ONLY the Singapore-based station "${closestStation.name}" as your wind data source. Do NOT invent or reference any other weather station.
-- You MUST state the current Singapore wind speed (${sgWindSpeedKmh.toFixed(1)} km/h) and direction (blowing towards ${sgWindBlowingTowards}).
+- You MUST state the current wind speed (${sgWindSpeedKmh.toFixed(1)} km/h) and direction (blowing towards ${sgWindBlowingTowards}) and explicitly specify that it is from the "${closestStation.name}" weather station.
 - You MUST state the estimated travel time (${travelTimeStr}) and whether it will likely affect Singapore within 24 hours.
-- If it will NOT affect Singapore within 24 hours, state: "Based on the distance of ${Math.round(distToSG)} km and current wind conditions (${sgWindSpeedKmh.toFixed(1)} km/h blowing towards ${sgWindBlowingTowards}), this hazard is unlikely to affect Singapore within the next 24 hours."`;
+- If it will NOT affect Singapore within 24 hours, state: "Based on the distance of ${Math.round(distToSG)} km and current wind conditions at the ${closestStation.name} weather station (${sgWindSpeedKmh.toFixed(1)} km/h blowing towards ${sgWindBlowingTowards}), this hazard is unlikely to affect Singapore within the next 24 hours."`;
 
         if (pastHourSummary) {
           windContext += `\n${pastHourSummary}\n`;
