@@ -1,16 +1,88 @@
+/**
+ * Sanitize HTML for Telegram's strict HTML parser.
+ *
+ * 1. Converts <br>/<p> to newlines.
+ * 2. Protects allowed Telegram tags (<b>, <i>, <a>, etc.) with placeholders.
+ * 3. Strips all other HTML tags.
+ * 4. Escapes stray <, >, & in plain text so they can't be misinterpreted as tags.
+ * 5. Restores the allowed tags.
+ * 6. Validates nesting: removes orphaned closing tags, auto-closes unclosed tags.
+ */
 export function sanitizeTgHtml(str: string): string {
   if (!str) return '';
-  return String(str)
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<p\b[^>]*>/gi, '') // Strip <p> and <p ...> completely
-    .replace(/<([^>]+)>/g, (match, tag) => {
-       const lower = tag.toLowerCase().split(' ')[0];
-       if (['b', '/b', 'strong', '/strong', 'i', '/i', 'em', '/em', 'u', '/u', 'ins', '/ins', 's', '/s', 'strike', '/strike', 'del', '/del', 'a', '/a', 'code', '/code', 'pre', '/pre'].includes(lower)) {
-         return match;
-       }
-       return ''; // strip all other tags
-    });
+  let result = String(str);
+
+  // Step 1: Convert HTML line breaks and paragraphs to newlines
+  result = result.replace(/<br\s*\/?>/gi, '\n');
+  result = result.replace(/<\/p>/gi, '\n');
+  result = result.replace(/<p\b[^>]*>/gi, '');
+
+  // Step 2: Protect allowed Telegram HTML tags with null-byte placeholders
+  const ALLOWED_TAGS = new Set([
+    'b', '/b', 'strong', '/strong', 'i', '/i', 'em', '/em',
+    'u', '/u', 'ins', '/ins', 's', '/s', 'strike', '/strike',
+    'del', '/del', 'a', '/a', 'code', '/code', 'pre', '/pre',
+    'tg-spoiler', '/tg-spoiler'
+  ]);
+
+  const placeholders: string[] = [];
+  result = result.replace(/<(\/?[a-zA-Z][^>]*)>/g, (match, inner) => {
+    const tagName = inner.toLowerCase().split(/\s/)[0];
+    if (ALLOWED_TAGS.has(tagName)) {
+      const idx = placeholders.length;
+      placeholders.push(match);
+      return `\x00TG${idx}\x00`;
+    }
+    return ''; // strip unsupported tags
+  });
+
+
+  // Step 3: Escape HTML-special characters remaining in plain text
+  // (avoid double-escaping existing entities like &amp; &lt; &gt;)
+  result = result.replace(/&(?!amp;|lt;|gt;|quot;|#\d+;|#x[0-9a-fA-F]+;)/g, '&amp;');
+  result = result.replace(/</g, '&lt;');
+  result = result.replace(/>/g, '&gt;');
+
+  // Step 4: Restore protected allowed tags
+  result = result.replace(/\x00TG(\d+)\x00/g, (_, idx) => placeholders[parseInt(idx)]);
+
+  // Step 5: Validate tag nesting
+  const TAG_RE = /<(\/?)(b|strong|i|em|u|ins|s|strike|del|a|code|pre|tg-spoiler)(\s[^>]*)?>/gi;
+  const openStack: string[] = [];
+  const orphanRanges: { start: number; end: number }[] = [];
+  let m;
+
+  while ((m = TAG_RE.exec(result)) !== null) {
+    const isClose = m[1] === '/';
+    const tag = m[2].toLowerCase();
+
+    if (!isClose) {
+      openStack.push(tag);
+    } else {
+      const idx = openStack.lastIndexOf(tag);
+      if (idx !== -1) {
+        // Valid close — pop everything from that index onward
+        // (intermediate unclosed tags will be caught and closed at the end)
+        openStack.splice(idx, 1);
+      } else {
+        // Orphaned closing tag — mark for removal
+        orphanRanges.push({ start: m.index, end: m.index + m[0].length });
+      }
+    }
+  }
+
+  // Remove orphaned closing tags (iterate in reverse to keep positions stable)
+  for (let i = orphanRanges.length - 1; i >= 0; i--) {
+    const { start, end } = orphanRanges[i];
+    result = result.substring(0, start) + result.substring(end);
+  }
+
+  // Auto-close any remaining unclosed tags (in reverse order for proper nesting)
+  while (openStack.length > 0) {
+    result += `</${openStack.pop()}>`;
+  }
+
+  return result;
 }
 
 export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null, type?: string | null, reply_markup?: any }) {
