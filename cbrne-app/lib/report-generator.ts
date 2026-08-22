@@ -268,11 +268,6 @@ export async function generateHourlyReport() {
     const [speedData, dirData, pm25Data] = envDataPromise;
 
     const extractStationStatus = (data: any, expectedTotal: number = 17) => {
-      if (!data || !data.data || !data.data.stations || !data.data.readings) return { total: expectedTotal, active: 0, missing: [] };
-      const stations = data.data.stations;
-      const readings = data.data.readings;
-      const total = Math.max(stations.length, expectedTotal);
-      
       const KNOWN_STATIONS = [
         'Marina Gardens Drive', 'Ang Mo Kio Avenue 5', 'Pulau Ubin', 'Banyan Road', 
         'East Coast Parkway', 'Woodlands Avenue 9', 'Tuas South Avenue 3', 'West Coast Highway', 
@@ -280,7 +275,24 @@ export async function generateHourlyReport() {
         'Kim Chuan Road', 'S23', 'Paya Lebar Airport', 'Scotts Road', 'Old Choa Chu Kang Road'
       ];
 
-      if (readings.length === 0) return { total, active: 0, missing: stations.map((s: any) => ({ name: s.name, downSince: 'start of day' })) };
+      if (!data || !data.data || !data.data.stations || !data.data.readings) {
+          return { total: expectedTotal, active: 0, missing: KNOWN_STATIONS.map(name => ({ name, downSince: 'API data unavailable' })) };
+      }
+
+      const stations = data.data.stations;
+      const readings = data.data.readings;
+      const total = Math.max(stations.length, expectedTotal);
+
+      if (readings.length === 0) {
+          const missingInfo = stations.map((s: any) => ({ name: s.name, downSince: 'start of day' }));
+          const seen = new Set(stations.map((s: any) => s.name));
+          for (const name of KNOWN_STATIONS) {
+              if (!seen.has(name)) {
+                  missingInfo.push({ name, downSince: 'start of day (API omitted)' });
+              }
+          }
+          return { total, active: 0, missing: missingInfo };
+      }
 
       const missingInfo: any[] = [];
       let activeCount = 0;
@@ -326,7 +338,7 @@ export async function generateHourlyReport() {
 
       for (const name of KNOWN_STATIONS) {
           if (!seenStationNames.has(name)) {
-              missingInfo.push({ name, downSince: 'API omitted' });
+              missingInfo.push({ name, downSince: 'start of day (API omitted)' });
           }
       }
 
@@ -378,7 +390,10 @@ export async function generateHourlyReport() {
     for (const s of speedStats.missing) {
         if (dirMissingMap.has(s.name)) {
             const dSince = dirMissingMap.get(s.name);
-            const timeStr = (s.downSince === dSince) ? s.downSince : s.downSince;
+            let timeStr = s.downSince;
+            if (s.downSince !== dSince) {
+                timeStr = `${s.downSince} (Speed) / ${dSince} (Dir)`;
+            }
             combinedDown.push(`${s.name} since ${timeStr}`);
             dirMissingMap.delete(s.name);
         } else {
