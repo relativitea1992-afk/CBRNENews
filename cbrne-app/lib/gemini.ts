@@ -421,6 +421,25 @@ export interface ClusterResult {
   clusterId: string | null;
 }
 
+export async function clusterIncident(
+  headline: string,
+  summary: string,
+  type: string,
+  recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
+): Promise<{ clusterId: string | null, usageMetadata?: any } | null> {
+  const batchResult = await clusterIncidentsBatch(
+    [{ id: "single", headline, summary, type }],
+    recentIncidents
+  );
+  if (batchResult && batchResult.results.length > 0) {
+    return {
+      clusterId: batchResult.results[0].clusterId,
+      usageMetadata: batchResult.usageMetadata
+    };
+  }
+  return null;
+}
+
 export async function clusterIncidentsBatch(
   newIncidents: { id: string, headline: string, summary: string, type: string }[],
   recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
