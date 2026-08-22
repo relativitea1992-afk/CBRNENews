@@ -28,23 +28,48 @@ export interface GeminiResponse {
 }
 
 /**
+ * Returns true for models that do NOT support the responseSchema API parameter
+ * (server-side constrained decoding). These models can still output JSON via
+ * prompt instructions and responseMimeType, just not schema-enforced output.
+ */
+function isSchemaUnsupported(model: string): boolean {
+  return model.startsWith('gemma');
+}
+
+/**
  * Calls Gemini with automatic model fallback. Tries each model in the
  * fallback chain until one succeeds or all fail.
+ *
+ * For models that don't support responseSchema (e.g. Gemma), the schema is
+ * automatically stripped from the config. The prompts already contain JSON
+ * format instructions, and callers already have JSON cleanup logic, so this
+ * works transparently.
  */
 export async function geminiGenerate(options: GeminiRequestOptions): Promise<GeminiResponse> {
   let lastError: any = null;
 
   for (const model of MODEL_FALLBACK_CHAIN) {
     try {
+      // Build config — strip responseSchema for models that don't support it
+      let config = options.config ? { ...options.config } : undefined;
+      if (config && isSchemaUnsupported(model)) {
+        const { responseSchema, ...rest } = config;
+        if (responseSchema) {
+          console.info(`[gemini-client] Stripping responseSchema for ${model} (unsupported). Using prompt-based JSON output.`);
+        }
+        config = Object.keys(rest).length > 0 ? rest : undefined;
+      }
+
       const generatePromise = ai.models.generateContent({
         model,
         contents: options.contents,
-        ...(options.config ? { config: options.config } : {}),
+        ...(config ? { config } : {}),
       });
 
-      // 30-second timeout per model
+      // Gemma models are slower — give them 60s; Gemini models get 30s
+      const timeoutMs = isSchemaUnsupported(model) ? 60000 : 30000;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Timeout: Model ${model} took longer than 30s to respond`)), 30000);
+        setTimeout(() => reject(new Error(`Timeout: Model ${model} took longer than ${timeoutMs / 1000}s to respond`)), timeoutMs);
       });
 
       const response = await Promise.race([generatePromise, timeoutPromise]) as any;
@@ -55,12 +80,20 @@ export async function geminiGenerate(options: GeminiRequestOptions): Promise<Gem
       const status = error?.status || error?.httpStatusCode;
       const message = error?.message || '';
 
-      // Retry on anything EXCEPT 400 (Bad Request), 401 (Unauthorized), 403 (Forbidden)
-      if (status === 400 || status === 401 || status === 403) {
+      // Hard-throw on auth errors (401, 403) — these won't resolve by retrying
+      if (status === 401 || status === 403) {
         throw error;
       }
 
-      console.warn(`Gemini model "${model}" failed (${status || 'Network/Unknown'} - ${message}), trying next model...`);
+      // For 400 errors: only hard-throw if this is the FIRST model (likely a
+      // genuinely malformed request). For fallback models, 400 may be a
+      // capability gap (e.g. unsupported param we missed stripping), so we
+      // continue to the next model.
+      if (status === 400 && model === MODEL_FALLBACK_CHAIN[0]) {
+        throw error;
+      }
+
+      console.warn(`[gemini-client] Model "${model}" failed (${status || 'Network/Unknown'} - ${message}), trying next model...`);
       continue;
     }
   }
