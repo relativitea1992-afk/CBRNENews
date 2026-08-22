@@ -487,3 +487,113 @@ OR
   
   return null;
 }
+
+/**
+ * Batched version of clusterIncident. Clusters multiple new incidents against
+ * recent threats in a single API call instead of one call per incident.
+ *
+ * Returns a parallel array of clusterIds (null = no match) aligned with the
+ * input newIncidents array.
+ */
+export async function clusterIncidentBatch(
+  newIncidents: { headline: string, summary: string, type: string }[],
+  recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
+): Promise<{ results: (string | null)[], usageMetadata?: any, modelUsed?: string } | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  if (newIncidents.length === 0) return null;
+
+  const results: (string | null)[] = new Array(newIncidents.length).fill(null);
+
+  // Pre-filter: only send incidents that have at least one matching-type candidate
+  const recentTypeSet = new Set(recentIncidents.map(i => i.type));
+  const eligibleIndices: number[] = [];
+  for (let i = 0; i < newIncidents.length; i++) {
+    if (recentTypeSet.has(newIncidents[i].type)) {
+      eligibleIndices.push(i);
+    }
+  }
+
+  // No eligible incidents — skip the API call entirely
+  if (eligibleIndices.length === 0) {
+    return { results, usageMetadata: undefined, modelUsed: undefined };
+  }
+
+  // Build the new incidents list for the prompt (sequential numbering)
+  const eligibleList = eligibleIndices.map((origIdx, seqIdx) => {
+    const inc = newIncidents[origIdx];
+    return `[New ${seqIdx}] Type: ${inc.type}\nHeadline: ${inc.headline}\nSummary: ${inc.summary}`;
+  }).join('\n\n');
+
+  // Only include recent threats whose type matches at least one eligible incident
+  const eligibleTypes = new Set(eligibleIndices.map(i => newIncidents[i].type));
+  const relevantRecent = recentIncidents.filter(i => eligibleTypes.has(i.type));
+
+  const candidatesList = relevantRecent.map((t, idx) =>
+    `[Candidate ${idx}] ClusterID: ${t.clusterId || t.id}\nType: ${t.type}\nHeadline: ${t.headline}\nSummary: ${t.summary}`
+  ).join('\n\n');
+
+  const prompt = `You are a CBRNE Intelligence Analyst. For each new incident below, determine if it refers to the EXACT SAME ongoing real-world event as any of the recent threats.
+
+New Incidents:
+${eligibleList}
+
+Recent Active Threats:
+${candidatesList}
+
+Rules:
+1. ONLY group them if they are undeniably the same event (e.g. updates on the same chemical fire, same hazy period).
+2. If it is a completely separate incident (even if similar type), do NOT group them.
+3. Compare each new incident ONLY against recent threats of the SAME type.
+4. If it matches, return the ClusterID of the match.
+
+Output a JSON array with one entry per new incident, in order:
+[
+  { "index": 0, "isSameEvent": true, "clusterId": "the-matched-cluster-id" },
+  { "index": 1, "isSameEvent": false }
+]
+`;
+
+  try {
+    const response = await geminiGenerate({
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              index: { type: "number" },
+              isSameEvent: { type: "boolean" },
+              clusterId: { type: "string" }
+            },
+            required: ["index", "isSameEvent"]
+          }
+        }
+      }
+    });
+    if (!response || !response.text) return null;
+
+    let cleaned = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const firstBracket = cleaned.indexOf('[');
+    const lastBracket = cleaned.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1) {
+      cleaned = cleaned.substring(firstBracket, lastBracket + 1);
+    }
+    const parsed = JSON.parse(cleaned) as { index: number, isSameEvent: boolean, clusterId?: string }[];
+
+    // Map sequential indices back to original indices
+    for (const entry of parsed) {
+      if (entry.isSameEvent && entry.clusterId && entry.index >= 0 && entry.index < eligibleIndices.length) {
+        results[eligibleIndices[entry.index]] = entry.clusterId;
+      }
+    }
+
+    return { results, usageMetadata: response.usageMetadata, modelUsed: response.modelUsed };
+  } catch (error) {
+    console.error('Error batch clustering incidents with Gemini:', error);
+  }
+
+  return null;
+}
+

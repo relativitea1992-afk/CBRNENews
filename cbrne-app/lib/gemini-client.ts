@@ -25,6 +25,7 @@ export interface GeminiResponse {
   text: string | undefined;
   modelUsed: string;
   usageMetadata?: any;
+  rateLimitedModels?: string[];
 }
 
 /**
@@ -47,6 +48,7 @@ function isSchemaUnsupported(model: string): boolean {
  */
 export async function geminiGenerate(options: GeminiRequestOptions): Promise<GeminiResponse> {
   let lastError: any = null;
+  const rateLimitedModels: string[] = [];
 
   for (const model of MODEL_FALLBACK_CHAIN) {
     try {
@@ -74,11 +76,15 @@ export async function geminiGenerate(options: GeminiRequestOptions): Promise<Gem
 
       const response = await Promise.race([generatePromise, timeoutPromise]) as any;
 
-      return { text: response.text, modelUsed: model, usageMetadata: response.usageMetadata };
+      return { text: response.text, modelUsed: model, usageMetadata: response.usageMetadata, rateLimitedModels };
     } catch (error: any) {
       lastError = error;
       const status = error?.status || error?.httpStatusCode;
       const message = error?.message || '';
+
+      if (status === 429) {
+        rateLimitedModels.push(model);
+      }
 
       // Hard-throw on auth errors (401, 403) — these won't resolve by retrying
       if (status === 401 || status === 403) {
@@ -117,15 +123,14 @@ export async function checkAllModels(): Promise<ModelStatus[]> {
   const promises = MODEL_FALLBACK_CHAIN.map(async (model) => {
     try {
       const start = Date.now();
-      const response = await ai.models.generateContent({
-        model,
-        contents: 'Reply with "OK" if you are online.',
-      });
+      await ai.models.get({ model });
       const latencyMs = Date.now() - start;
 
       return { model, status: 'online' as const, latencyMs };
     } catch (error: any) {
       const code = error?.status || error?.httpStatusCode;
+      // Note: ai.models.get does not typically return 429 for generation limits,
+      // but it will catch network or auth errors.
       if (code === 429) {
         return { model, status: 'rate_limited' as const };
       } else if (code === 404) {

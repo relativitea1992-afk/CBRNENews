@@ -79,17 +79,8 @@ export async function generateHourlyReport() {
 
   // 2. Check ALL Gemini models individually
   const modelStatuses = await checkAllModels();
-  let geminiStatusSection = '';
-  for (const ms of modelStatuses) {
-    const name = ms.model.replace('gemini-', '');
-    if (ms.status === 'online') {
-      geminiStatusSection += `  ✅ ${name} (${ms.latencyMs}ms)\n`;
-    } else if (ms.status === 'rate_limited') {
-      geminiStatusSection += `  ⚠️ ${name} — Rate limited\n`;
-    } else {
-      geminiStatusSection += `  ❌ ${name} — ${ms.error || 'Unavailable'}\n`;
-    }
-  }
+  
+  const allRateLimitedModels = new Set<string>();
 
   // 3. Check NewsAPI Linkage + extract multiple articles with pre-filter
   let newsApiStatus = 'Unknown';
@@ -634,6 +625,9 @@ ${newsContent}`,
             }
           }
       });
+      if (geminiSelection.rateLimitedModels) {
+        geminiSelection.rateLimitedModels.forEach(m => allRateLimitedModels.add(m));
+      }
 
       let selectionResult: any = { newsApiTop2: [], cnaTop2: [], stTop2: [] };
       try {
@@ -726,6 +720,9 @@ ${pm25Context}`,
             }
           }
       });
+      if (geminiAssessmentResponse.rateLimitedModels) {
+        geminiAssessmentResponse.rateLimitedModels.forEach(m => allRateLimitedModels.add(m));
+      }
 
       let assessmentResult: any = {};
       try {
@@ -815,6 +812,19 @@ ${finalAdvisory}`;
     threatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
     threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;
     threatSection += `🗞️ <b>ST RSS:</b> <i>No headlines available</i>\n`;
+  }
+
+  // 7b. Rebuild Gemini Status based on real usage rate limits
+  let geminiStatusSection = '';
+  for (const ms of modelStatuses) {
+    const name = ms.model.replace('gemini-', '');
+    if (allRateLimitedModels.has(ms.model)) {
+      geminiStatusSection += `  ⚠️ ${name} — Rate limited\n`;
+    } else if (ms.status === 'online') {
+      geminiStatusSection += `  ✅ ${name} (${ms.latencyMs}ms)\n`;
+    } else {
+      geminiStatusSection += `  ❌ ${name} — ${ms.error || 'Unavailable'}\n`;
+    }
   }
 
   // 8. Construct the Hourly Report Messages (Split to bypass 4096 char limit)
