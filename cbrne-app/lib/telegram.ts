@@ -85,6 +85,40 @@ export function sanitizeTgHtml(str: string): string {
   return result;
 }
 
+function chunkText(text: string, maxLength: number = 4000): string[] {
+  if (text.length <= maxLength) return [text];
+  
+  const chunks: string[] = [];
+  let remaining = text;
+  
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+    
+    // Try to split at double newline
+    let splitIndex = remaining.lastIndexOf('\n\n', maxLength);
+    if (splitIndex === -1 || splitIndex < maxLength * 0.5) {
+      // Try single newline
+      splitIndex = remaining.lastIndexOf('\n', maxLength);
+    }
+    if (splitIndex === -1 || splitIndex < maxLength * 0.5) {
+      // Try space
+      splitIndex = remaining.lastIndexOf(' ', maxLength);
+    }
+    if (splitIndex === -1 || splitIndex < maxLength * 0.5) {
+      // Hard split
+      splitIndex = maxLength;
+    }
+    
+    chunks.push(remaining.substring(0, splitIndex));
+    remaining = remaining.substring(splitIndex).trimStart();
+  }
+  
+  return chunks;
+}
+
 export async function sendTelegramMessage(chatId: string, text: string, options?: { lat?: number | null, lon?: number | null, type?: string | null, reply_markup?: any }) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -93,9 +127,30 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
   }
   
   try {
-    const sanitizedText = sanitizeTgHtml(text);
     const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hazmat-scan.vercel.app';
-    const finalMessage = `${sanitizedText}\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
+    const linkStr = `\n\n<a href="${dashboardUrl}">🌐 View on Dashboard</a>`;
+    const MAX_LEN = 4000;
+    
+    // Convert <br> and <p> to \n first so chunkText can split properly
+    const preprocessedText = text.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<p\b[^>]*>/gi, '');
+    
+    let textChunks: string[] = [];
+    if (preprocessedText.length + linkStr.length <= MAX_LEN) {
+      textChunks = [preprocessedText];
+    } else {
+      textChunks = chunkText(preprocessedText, MAX_LEN - linkStr.length - 20);
+    }
+    
+    const finalChunks = textChunks.map((chunk, index) => {
+      let sanitized = sanitizeTgHtml(chunk);
+      if (textChunks.length > 1) {
+        sanitized = `<b>(Part ${index + 1}/${textChunks.length})</b>\n` + sanitized;
+      }
+      if (index === textChunks.length - 1) {
+        sanitized += linkStr;
+      }
+      return sanitized;
+    });
 
     if (options?.lat && options?.lon) {
       const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -159,25 +214,28 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
       }
     }
 
-    // Send the detailed text message (allows up to 4096 chars)
-    const messageBody: any = {
-      chat_id: chatId,
-      text: finalMessage,
-      parse_mode: 'HTML',
-    };
-    if (options?.reply_markup) {
-      messageBody.reply_markup = options.reply_markup;
-    }
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(messageBody),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to send Telegram message:', errorText);
-      throw new Error(`Telegram API Error: ${errorText}`);
+    // Send the detailed text message chunks sequentially
+    for (let i = 0; i < finalChunks.length; i++) {
+      const messageBody: any = {
+        chat_id: chatId,
+        text: finalChunks[i],
+        parse_mode: 'HTML',
+      };
+      // Only attach reply_markup to the final chunk
+      if (options?.reply_markup && i === finalChunks.length - 1) {
+        messageBody.reply_markup = options.reply_markup;
+      }
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(messageBody),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Failed to send Telegram message (Part ${i + 1}):`, errorText);
+        throw new Error(`Telegram API Error: ${errorText}`);
+      }
     }
   } catch (error) {
     console.error('Error sending Telegram message:', error);
