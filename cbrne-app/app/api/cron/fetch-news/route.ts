@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { extract } from '@extractus/article-extractor';
 import Parser from 'rss-parser';
 import prisma from '@/lib/prisma';
-import { triageNewsBatch, triageRelevantArticlePass2, clusterIncident } from '@/lib/gemini';
+import { triageNewsBatch, triageRelevantArticlePass2, clusterIncidentBatch } from '@/lib/gemini';
 import { sendTelegramMessage } from '@/lib/telegram';
 
 const parser = new Parser();
@@ -191,7 +191,9 @@ export async function GET(request: Request) {
           triageTokens.total += batchResult.usageMetadata.totalTokenCount || 0;
         }
 
-        // Process each result in the chunk
+        // Phase 1: Triage all articles in the chunk (Pass 1 results + Pass 2 for relevant)
+        const processedInChunk: { article: typeof chunk[0], triage: any }[] = [];
+
         for (const res of batchResult.results) {
           const article = chunk[res.index];
           if (!article) continue;
@@ -242,33 +244,55 @@ export async function GET(request: Request) {
              }
           }
 
-          let clusterId: string | undefined = undefined;
+          processedInChunk.push({ article, triage });
+        }
 
-          if (triage.isRelevant) {
-            // Find recent active threats to cluster with
-            const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
-            const recentActiveThreats = await prisma.incident.findMany({
-              where: { isRelevant: true, createdAt: { gte: fortyEightHoursAgo } },
-              orderBy: { createdAt: 'desc' }
-            });
+        // Phase 2: Batch cluster all relevant articles in one API call
+        const clusterIds: (string | undefined)[] = new Array(processedInChunk.length).fill(undefined);
+        const relevantForClustering = processedInChunk
+          .map((p, i) => ({ ...p, idx: i }))
+          .filter(p => p.triage.isRelevant);
 
-            if (recentActiveThreats.length > 0) {
-               const clusterResult = await clusterIncident(
-                 triage.headline || article.title,
-                 triage.summary || '',
-                 triage.type || 'Unknown',
-                 recentActiveThreats.map(t => ({ id: t.id, clusterId: t.clusterId, headline: t.headline, summary: t.summary, type: t.type }))
-               );
-               if (clusterResult) {
-                 if (clusterResult.clusterId) clusterId = clusterResult.clusterId;
-                 if (clusterResult.usageMetadata) {
-                   clusterTokens.prompt += clusterResult.usageMetadata.promptTokenCount || 0;
-                   clusterTokens.candidate += clusterResult.usageMetadata.candidatesTokenCount || 0;
-                   clusterTokens.total += clusterResult.usageMetadata.totalTokenCount || 0;
-                 }
-               }
+        if (relevantForClustering.length > 0) {
+          const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+          const recentActiveThreats = await prisma.incident.findMany({
+            where: { isRelevant: true, createdAt: { gte: fortyEightHoursAgo } },
+            orderBy: { createdAt: 'desc' }
+          });
+
+          if (recentActiveThreats.length > 0) {
+            const batchClusterResult = await clusterIncidentBatch(
+              relevantForClustering.map(p => ({
+                headline: p.triage.headline || p.article.title,
+                summary: p.triage.summary || '',
+                type: p.triage.type || 'Unknown',
+              })),
+              recentActiveThreats.map(t => ({ id: t.id, clusterId: t.clusterId, headline: t.headline, summary: t.summary, type: t.type }))
+            );
+
+            if (batchClusterResult) {
+              if (batchClusterResult.usageMetadata) {
+                clusterTokens.prompt += batchClusterResult.usageMetadata.promptTokenCount || 0;
+                clusterTokens.candidate += batchClusterResult.usageMetadata.candidatesTokenCount || 0;
+                clusterTokens.total += batchClusterResult.usageMetadata.totalTokenCount || 0;
+              }
+              if (batchClusterResult.modelUsed) modelsUsed.add(batchClusterResult.modelUsed);
+
+              // Map batch results back to processedInChunk indices
+              for (let i = 0; i < relevantForClustering.length; i++) {
+                const clusterId = batchClusterResult.results[i];
+                if (clusterId) {
+                  clusterIds[relevantForClustering[i].idx] = clusterId;
+                }
+              }
             }
           }
+        }
+
+        // Phase 3: Save to DB and send Telegram alerts
+        for (let i = 0; i < processedInChunk.length; i++) {
+          const { article, triage } = processedInChunk[i];
+          const clusterId = clusterIds[i];
 
           // Save to DB
           const savedIncident = await prisma.incident.upsert({

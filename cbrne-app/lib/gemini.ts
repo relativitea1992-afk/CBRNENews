@@ -416,67 +416,46 @@ ${articleText}
   return null;
 }
 
-export interface ClusterResult {
-  newIncidentId: string;
-  clusterId: string | null;
-}
-
 export async function clusterIncident(
-  headline: string,
-  summary: string,
-  type: string,
+  newHeadline: string,
+  newSummary: string,
+  newType: string,
   recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
-): Promise<{ clusterId: string | null, usageMetadata?: any } | null> {
-  const batchResult = await clusterIncidentsBatch(
-    [{ id: "single", headline, summary, type }],
-    recentIncidents
-  );
-  if (batchResult && batchResult.results.length > 0) {
-    return {
-      clusterId: batchResult.results[0].clusterId,
-      usageMetadata: batchResult.usageMetadata
-    };
-  }
-  return null;
-}
-
-export async function clusterIncidentsBatch(
-  newIncidents: { id: string, headline: string, summary: string, type: string }[],
-  recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
-): Promise<{ results: ClusterResult[], usageMetadata?: any, modelUsed?: string } | null> {
+): Promise<{ clusterId: string | null, usageMetadata?: any, modelUsed?: string } | null> {
   if (!process.env.GEMINI_API_KEY) return null;
-  if (newIncidents.length === 0) return { results: [] };
-  if (recentIncidents.length === 0) return { results: newIncidents.map(inc => ({ newIncidentId: inc.id, clusterId: null })) };
   
-  const newIncidentsList = newIncidents.map(inc => 
-    `[New Incident ID: ${inc.id}]\nType: ${inc.type}\nHeadline: ${inc.headline}\nSummary: ${inc.summary}`
+  // Filter incidents to match the exact same type as a basic heuristic
+  const matchingTypeIncidents = recentIncidents.filter(i => i.type === newType);
+  if (matchingTypeIncidents.length === 0) return null;
+  
+  const candidatesList = matchingTypeIncidents.map((t, idx) => 
+    `[Candidate ${idx}] ClusterID: ${t.clusterId || t.id}\nHeadline: ${t.headline}\nSummary: ${t.summary}`
   ).join('\n\n');
 
-  const candidatesList = recentIncidents.map(t => 
-    `[Candidate ClusterID: ${t.clusterId || t.id}]\nType: ${t.type}\nHeadline: ${t.headline}\nSummary: ${t.summary}`
-  ).join('\n\n');
+  const prompt = `You are a CBRNE Intelligence Analyst. Your task is to determine if a newly detected news article refers to the EXACT SAME ongoing real-world event as any of the recent threats.
 
-  const prompt = `You are a CBRNE Intelligence Analyst. Your task is to determine if newly detected news articles refer to the EXACT SAME ongoing real-world event as any of the recent threats.
-
-New Incidents:
-${newIncidentsList}
+New Incident:
+Headline: ${newHeadline}
+Summary: ${newSummary}
+Type: ${newType}
 
 Recent Active Threats:
 ${candidatesList}
 
 Rules:
-1. ONLY group a New Incident with a Candidate if they are undeniably the same event (e.g. updates on the same chemical fire, same hazy period).
+1. ONLY group them if they are undeniably the same event (e.g. updates on the same chemical fire, same hazy period).
 2. If it is a completely separate incident (even if similar type), do NOT group them.
-3. If it matches, set isSameEvent to true and provide the clusterId of the match. If it does not match ANY candidate, set isSameEvent to false.
+3. If it matches, return the ClusterID of the match.
 
-Output JSON format strictly as an array of objects:
-[
-  {
-    "newIncidentId": "id-of-new-incident",
-    "isSameEvent": true,
-    "clusterId": "the-matched-cluster-id"
-  }
-]
+Output JSON format strictly:
+{
+  "isSameEvent": true,
+  "clusterId": "the-matched-cluster-id"
+}
+OR
+{
+  "isSameEvent": false
+}
 `;
 
   try {
@@ -485,38 +464,136 @@ Output JSON format strictly as an array of objects:
       config: { 
         responseMimeType: 'application/json',
         responseSchema: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              newIncidentId: { type: "string" },
-              isSameEvent: { type: "boolean" },
-              clusterId: { type: "string", nullable: true }
-            },
-            required: ["newIncidentId", "isSameEvent"]
-          }
+          type: "object",
+          properties: {
+            isSameEvent: { type: "boolean" },
+            clusterId: { type: "string" }
+          },
+          required: ["isSameEvent"]
         }
       } 
     });
-    
     if (!response || !response.text) return null;
-    let cleanText = response.text.trim();
-    const firstBrace = cleanText.indexOf('[');
-    const lastBrace = cleanText.lastIndexOf(']');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      cleanText = cleanText.substring(firstBrace, lastBrace + 1);
-    }
-    const resultArr = JSON.parse(cleanText);
+    const cleaned = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const result = JSON.parse(cleaned);
     
-    const results: ClusterResult[] = resultArr.map((res: any) => ({
-      newIncidentId: res.newIncidentId,
-      clusterId: res.isSameEvent && res.clusterId ? res.clusterId : null
-    }));
-
-    return { results, usageMetadata: response.usageMetadata, modelUsed: response.modelUsed };
+    if (result.isSameEvent && result.clusterId) {
+       return { clusterId: result.clusterId, usageMetadata: response.usageMetadata, modelUsed: response.modelUsed };
+    }
+    return { clusterId: null, usageMetadata: response.usageMetadata, modelUsed: response.modelUsed };
   } catch (error) {
-    console.error('Error clustering incidents with Gemini:', error);
+    console.error('Error clustering incident with Gemini:', error);
   }
   
   return null;
 }
+
+/**
+ * Batched version of clusterIncident. Clusters multiple new incidents against
+ * recent threats in a single API call instead of one call per incident.
+ *
+ * Returns a parallel array of clusterIds (null = no match) aligned with the
+ * input newIncidents array.
+ */
+export async function clusterIncidentBatch(
+  newIncidents: { headline: string, summary: string, type: string }[],
+  recentIncidents: { id: string, clusterId: string | null, headline: string, summary: string, type: string }[]
+): Promise<{ results: (string | null)[], usageMetadata?: any, modelUsed?: string } | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  if (newIncidents.length === 0) return null;
+
+  const results: (string | null)[] = new Array(newIncidents.length).fill(null);
+
+  // Pre-filter: only send incidents that have at least one matching-type candidate
+  const recentTypeSet = new Set(recentIncidents.map(i => i.type));
+  const eligibleIndices: number[] = [];
+  for (let i = 0; i < newIncidents.length; i++) {
+    if (recentTypeSet.has(newIncidents[i].type)) {
+      eligibleIndices.push(i);
+    }
+  }
+
+  // No eligible incidents — skip the API call entirely
+  if (eligibleIndices.length === 0) {
+    return { results, usageMetadata: undefined, modelUsed: undefined };
+  }
+
+  // Build the new incidents list for the prompt (sequential numbering)
+  const eligibleList = eligibleIndices.map((origIdx, seqIdx) => {
+    const inc = newIncidents[origIdx];
+    return `[New ${seqIdx}] Type: ${inc.type}\nHeadline: ${inc.headline}\nSummary: ${inc.summary}`;
+  }).join('\n\n');
+
+  // Only include recent threats whose type matches at least one eligible incident
+  const eligibleTypes = new Set(eligibleIndices.map(i => newIncidents[i].type));
+  const relevantRecent = recentIncidents.filter(i => eligibleTypes.has(i.type));
+
+  const candidatesList = relevantRecent.map((t, idx) =>
+    `[Candidate ${idx}] ClusterID: ${t.clusterId || t.id}\nType: ${t.type}\nHeadline: ${t.headline}\nSummary: ${t.summary}`
+  ).join('\n\n');
+
+  const prompt = `You are a CBRNE Intelligence Analyst. For each new incident below, determine if it refers to the EXACT SAME ongoing real-world event as any of the recent threats.
+
+New Incidents:
+${eligibleList}
+
+Recent Active Threats:
+${candidatesList}
+
+Rules:
+1. ONLY group them if they are undeniably the same event (e.g. updates on the same chemical fire, same hazy period).
+2. If it is a completely separate incident (even if similar type), do NOT group them.
+3. Compare each new incident ONLY against recent threats of the SAME type.
+4. If it matches, return the ClusterID of the match.
+
+Output a JSON array with one entry per new incident, in order:
+[
+  { "index": 0, "isSameEvent": true, "clusterId": "the-matched-cluster-id" },
+  { "index": 1, "isSameEvent": false }
+]
+`;
+
+  try {
+    const response = await geminiGenerate({
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              index: { type: "number" },
+              isSameEvent: { type: "boolean" },
+              clusterId: { type: "string" }
+            },
+            required: ["index", "isSameEvent"]
+          }
+        }
+      }
+    });
+    if (!response || !response.text) return null;
+
+    let cleaned = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const firstBracket = cleaned.indexOf('[');
+    const lastBracket = cleaned.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1) {
+      cleaned = cleaned.substring(firstBracket, lastBracket + 1);
+    }
+    const parsed = JSON.parse(cleaned) as { index: number, isSameEvent: boolean, clusterId?: string }[];
+
+    // Map sequential indices back to original indices
+    for (const entry of parsed) {
+      if (entry.isSameEvent && entry.clusterId && entry.index >= 0 && entry.index < eligibleIndices.length) {
+        results[eligibleIndices[entry.index]] = entry.clusterId;
+      }
+    }
+
+    return { results, usageMetadata: response.usageMetadata, modelUsed: response.modelUsed };
+  } catch (error) {
+    console.error('Error batch clustering incidents with Gemini:', error);
+  }
+
+  return null;
+}
+
