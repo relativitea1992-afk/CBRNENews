@@ -30,20 +30,33 @@ export async function fetchWindDataWithFallback() {
   const latestSpeed = speedReadings.slice(-5).reverse();
   const latestDir = dirReadings.slice(-5).reverse();
   
-  // Actually, wait, the v2 API provides actual names in data.stations.
-  // Instead of relying on hardcoded constants, we can just use the stations returned by the API if they match!
-  const KNOWN_STATIONS = [
-    "Ang Mo Kio Avenue 5", "Banyan Road", "Clementi Road", "East Coast Parkway",
-    "Kim Chuan Road", "Marina Gardens Drive", "Nanyang Avenue", "Old Choa Chu Kang Road",
-    "Paya Lebar Airport", "Pulau Ubin", "S23", "Scotts Road", "Semakau Island",
-    "Sentosa", "Tuas South Avenue 3", "West Coast Highway", "Woodlands Avenue 9",
-    "Changi Climate Station", "Seletar", "Admiralty", "Pasir Panjang", "Tengah", "Tai Seng"
-  ];
-  const windData = KNOWN_STATIONS.map((stationName) => {
-    // Attempt to map from V2 string names to coordinates using the old constants if possible
-    // Note: V2 API returns string names (e.g. "Marina Barrage"), whereas old constants had "S108".
-    // Wait, the V2 API actually returns `stationId` inside `data.readings[i].data[j].stationId`! 
-    // And that stationId matches `data.stations[k].id`.
+  const V2_TO_V1_MAP: Record<string, string> = {
+    'Marina Barrage': 'Marina Gardens Drive',
+    'Ang Mo Kio Avenue 5': 'Ang Mo Kio Avenue 5',
+    'Jalan Noordin (Pulau Ubin)': 'Pulau Ubin',
+    'Banyan Road (Jurong Island)': 'Banyan Road',
+    'East Coast Park': 'East Coast Parkway',
+    'Woodlands Avenue 9': 'Woodlands Avenue 9',
+    'Tuas South Avenue 3': 'Tuas South Avenue 3',
+    'Pasir Panjang Terminal': 'S23', // or West Coast Highway
+    'Semakau Island': 'Semakau Island',
+    'Artillery Avenue (Sentosa)': 'Sentosa',
+    'Clementi Road': 'Clementi Road',
+    'Nanyang Avenue': 'Nanyang Avenue',
+    'Kim Chuan Road': 'Kim Chuan Road',
+    'Tengah Meteorological Station': 'Tengah',
+    'Paya Lebar Meteorological Station': 'Paya Lebar Airport',
+    'Scotts Road': 'Scotts Road',
+    'Old Choa Chu Kang Road': 'Old Choa Chu Kang Road',
+    'Changi Climate Station': 'Changi',
+    'Seletar': 'Seletar',
+    'Admiralty': 'Admiralty',
+    'Tai Seng': 'Tai Seng'
+  };
+
+  const V2_STATIONS = Object.keys(V2_TO_V1_MAP);
+
+  const windData = V2_STATIONS.map((stationName) => {
     let speed = null;
     let direction = null;
     let stnId = speedData.data.stations?.find((s: any) => s.name === stationName)?.id;
@@ -68,7 +81,8 @@ export async function fetchWindDataWithFallback() {
     }
     
     // Find coordinates from old constants via name matching if possible, else fallback
-    const oldStation = NEA_WIND_STATIONS.find(s => s.name === stationName || s.id === stnId);
+    const v1Name = V2_TO_V1_MAP[stationName];
+    const oldStation = NEA_WIND_STATIONS.find(s => s.name === v1Name || s.id === stnId);
     
     return {
       id: stnId || stationName,
