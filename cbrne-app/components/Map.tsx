@@ -38,7 +38,9 @@ export default function Map({
   showWind = false, 
   showPm25 = false,
   windError = null,
-  pm25Error = null
+  pm25Error = null,
+  windTimestamp,
+  pm25Timestamp
 }: { 
   incidents: Incident[], 
   windData?: any[], 
@@ -46,7 +48,9 @@ export default function Map({
   showWind?: boolean, 
   showPm25?: boolean,
   windError?: string | null,
-  pm25Error?: string | null
+  pm25Error?: string | null,
+  windTimestamp?: string,
+  pm25Timestamp?: string
 }) {
   const [mounted, setMounted] = useState(false);
   const [isImageLoaded, setIsImageLoaded] = useState(false);
@@ -198,7 +202,8 @@ export default function Map({
         if (!region.lat || !region.lng) return null;
         
         let color = '#22c55e'; // Green (Normal 0-55)
-        if (region.value > 250) color = '#dc2626'; // Red (Very High)
+        if (region.value === null) color = '#6b7280'; // Grey (N/A)
+        else if (region.value > 250) color = '#dc2626'; // Red (Very High)
         else if (region.value > 150) color = '#f97316'; // Orange (High)
         else if (region.value > 55) color = '#eab308'; // Yellow (Elevated)
 
@@ -210,7 +215,7 @@ export default function Map({
             radius={25}
           >
             <Tooltip permanent direction="center" className="bg-transparent border-none shadow-none text-white font-bold text-sm p-0 m-0">
-              {region.value !== null ? region.value : ''}
+              {region.value !== null ? region.value : 'N/A'}
             </Tooltip>
             <Popup className="bg-slate-800 text-white rounded-md border-none">
               <div className="p-2 max-w-xs text-slate-800">
@@ -278,6 +283,24 @@ export default function Map({
                   })}
                 </ul>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Timestamp Badge (Always Visible) */}
+      {(showWind && windTimestamp || showPm25 && pm25Timestamp) && (
+        <div className="absolute bottom-4 left-4 bg-slate-900/80 backdrop-blur border border-slate-700 p-2 rounded shadow-lg z-[1000] text-[10px] text-slate-300 pointer-events-none">
+          {showWind && windTimestamp && (
+            <div className="flex items-center gap-1.5 mb-1">
+              <span>💨 Wind:</span>
+              <span className="font-mono text-slate-100">{new Date(windTimestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true })} SGT</span>
+            </div>
+          )}
+          {showPm25 && pm25Timestamp && (
+            <div className="flex items-center gap-1.5">
+              <span>😶‍🌫️ PM2.5:</span>
+              <span className="font-mono text-slate-100">{new Date(pm25Timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true })} SGT</span>
             </div>
           )}
         </div>

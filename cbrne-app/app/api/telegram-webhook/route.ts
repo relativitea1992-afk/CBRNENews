@@ -686,6 +686,12 @@ export async function POST(request: NextRequest) {
                 const locStr = await getLocation(urlStr);
                 return `${locStr} (Supabase)`;
               }),
+              ping('Gemini APIs', 'Gemini (3.8-flash)', 'https://generativelanguage.googleapis.com', async () => {
+                const key = process.env.GEMINI_API_KEY;
+                if (!key) throw new Error('No Key');
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash?key=${key}`);
+                if (!res.ok) throw new Error('Bad status');
+              }),
               ping('Gemini APIs', 'Gemini (3.7-flash)', 'https://generativelanguage.googleapis.com', async () => {
                 const key = process.env.GEMINI_API_KEY;
                 if (!key) throw new Error('No Key');

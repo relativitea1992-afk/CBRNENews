@@ -39,7 +39,7 @@ const getTypeConfig = (type: string) => {
   }
 };
 
-export default function Dashboard({ incidents, isSnapshot = false, isPm25Snapshot = false, isWindSnapshot = true, initialWindData = [], initialPm25Data = [] }: { incidents: Incident[], isSnapshot?: boolean, isPm25Snapshot?: boolean, isWindSnapshot?: boolean, initialWindData?: any[], initialPm25Data?: any[] }) {
+export default function Dashboard({ incidents, isSnapshot = false, isPm25Snapshot = false, isWindSnapshot = true, initialWindData = [], initialPm25Data = [], initialWindTimestamp, initialPm25Timestamp }: { incidents: Incident[], isSnapshot?: boolean, isPm25Snapshot?: boolean, isWindSnapshot?: boolean, initialWindData?: any[], initialPm25Data?: any[], initialWindTimestamp?: string, initialPm25Timestamp?: string }) {
   const router = useRouter();
   const [isClearing, setIsClearing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -54,8 +54,10 @@ export default function Dashboard({ incidents, isSnapshot = false, isPm25Snapsho
   // Environmental Data State
   const [showWind, setShowWind] = useState(isSnapshot ? isWindSnapshot : true);
   const [windData, setWindData] = useState<any[]>(initialWindData);
+  const [windTimestamp, setWindTimestamp] = useState<string | undefined>(initialWindTimestamp);
   const [showPm25, setShowPm25] = useState(isPm25Snapshot);
   const [pm25Data, setPm25Data] = useState<any[]>(initialPm25Data);
+  const [pm25Timestamp, setPm25Timestamp] = useState<string | undefined>(initialPm25Timestamp);
   const [isLoadingWind, setIsLoadingWind] = useState(false);
   const [isLoadingPm25, setIsLoadingPm25] = useState(false);
   const [windError, setWindError] = useState<string|null>(null);
@@ -70,6 +72,7 @@ export default function Dashboard({ incidents, isSnapshot = false, isPm25Snapsho
       const data = await res.json();
       if (data.data) {
         setWindData(data.data);
+        setWindTimestamp(data.timestamp);
       } else {
         setWindError(data.error || 'Failed to fetch wind data');
       }
@@ -105,6 +108,7 @@ export default function Dashboard({ incidents, isSnapshot = false, isPm25Snapsho
       const data = await res.json();
       if (data.data) {
         setPm25Data(data.data);
+        setPm25Timestamp(data.timestamp);
       } else {
         setPm25Error(data.error || 'Failed to fetch PM2.5 data');
       }
@@ -264,7 +268,7 @@ export default function Dashboard({ incidents, isSnapshot = false, isPm25Snapsho
 
         {/* Right Panel: Map */}
         <section className="w-full lg:w-2/3 h-[50vh] min-h-[50vh] lg:h-full lg:min-h-[calc(100vh-120px)] relative rounded-xl overflow-hidden glass-panel border border-slate-700/50 shadow-lg">
-          <MapWithNoSSR incidents={incidents} windData={isSnapshot ? initialWindData : (showWind ? windData : [])} pm25Data={showPm25 ? pm25Data : []} showWind={showWind} showPm25={showPm25} windError={windError} pm25Error={pm25Error} />
+          <MapWithNoSSR incidents={incidents} windData={isSnapshot ? initialWindData : (showWind ? windData : [])} pm25Data={showPm25 ? pm25Data : []} showWind={showWind} showPm25={showPm25} windError={windError} pm25Error={pm25Error} windTimestamp={windTimestamp} pm25Timestamp={pm25Timestamp} />
           
           {/* Map Legend Overlay */}
           <div className="absolute bottom-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl z-[1000] text-xs">

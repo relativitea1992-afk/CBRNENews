@@ -225,16 +225,39 @@ export async function sendTelegramMessage(chatId: string, text: string, options?
       if (options?.reply_markup && i === finalChunks.length - 1) {
         messageBody.reply_markup = options.reply_markup;
       }
-      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      let response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(messageBody),
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Failed to send Telegram message (Part ${i + 1}):`, errorText);
-        throw new Error(`Telegram API Error: ${errorText}`);
+        let errorText = await response.text();
+        let retryAfter = 0;
+        try {
+          const errObj = JSON.parse(errorText);
+          if (errObj.error_code === 429 && errObj.parameters?.retry_after) {
+            retryAfter = errObj.parameters.retry_after;
+          }
+        } catch (e) {}
+
+        if (retryAfter > 0) {
+          console.warn(`Telegram API rate limited (Part ${i + 1}). Retrying after ${retryAfter}s...`);
+          await new Promise(res => setTimeout(res, retryAfter * 1000));
+          response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(messageBody),
+          });
+          if (!response.ok) {
+             errorText = await response.text();
+             console.error(`Failed to send Telegram message after retry (Part ${i + 1}):`, errorText);
+             throw new Error(`Telegram API Error: ${errorText}`);
+          }
+        } else {
+          console.error(`Failed to send Telegram message (Part ${i + 1}):`, errorText);
+          throw new Error(`Telegram API Error: ${errorText}`);
+        }
       }
     }
   } catch (error) {

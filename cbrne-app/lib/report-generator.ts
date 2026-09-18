@@ -284,11 +284,11 @@ export async function generateHourlyReport() {
       const total = Math.max(stations.length, expectedTotal);
 
       if (readings.length === 0) {
-          const missingInfo = stations.map((s: any) => ({ name: s.name, downSince: 'start of day' }));
+          const missingInfo = stations.map((s: any) => ({ name: s.name, downSince: 'No data today' }));
           const seen = new Set(stations.map((s: any) => s.name));
           for (const name of KNOWN_STATIONS) {
               if (!seen.has(name)) {
-                  missingInfo.push({ name, downSince: 'start of day (API omitted)' });
+                  missingInfo.push({ name, downSince: 'No data today (API omitted)' });
               }
           }
           return { total, active: 0, missing: missingInfo };
@@ -312,7 +312,9 @@ export async function generateHourlyReport() {
         }
         
         if (lastSeenIndex === -1) {
-            missingInfo.push({ name: station.name, downSince: 'start of day' });
+            const earliest = readings[readings.length - 1].timestamp;
+            const timeStr = earliest.includes('T') ? earliest.split('T')[1].substring(0, 5) : earliest;
+            missingInfo.push({ name: station.name, downSince: `since ${timeStr} (all day)` });
         } else {
             const lastSeenTime = new Date(readings[lastSeenIndex].timestamp).getTime();
             const delayMinutes = (latestApiTime - lastSeenTime) / (1000 * 60);
@@ -363,13 +365,16 @@ export async function generateHourlyReport() {
                 if (i - 1 >= 0) downSince = items[i - 1].timestamp;
                 break;
             } else if (i === items.length - 1) {
-                downSince = 'start of day';
+                downSince = items[items.length - 1].timestamp;
             }
         }
         
         let timeStr = downSince;
         if (downSince.includes('T')) {
             timeStr = downSince.split('T')[1].substring(0, 5);
+        }
+        if (downSince === items[items.length - 1].timestamp) {
+            return { name: region, downSince: `since ${timeStr} (all day)` };
         }
         return { name: region, downSince: timeStr };
       });
@@ -815,6 +820,8 @@ ${finalAdvisory}`;
     } catch (e: any) {
       console.error('Gemini parsing error:', e);
       // Fallback if parsing fails or all models unavailable
+      selectionModel = 'FAILED';
+      assessmentModel = 'FAILED';
       threatSection += heartbeatSection;
       threatSection += `📰 <b>NewsAPI:</b> <i>Error parsing headlines</i>\n`;
       threatSection += `📡 <b>CNA RSS:</b> <i>Error parsing top headlines</i>\n`;
@@ -823,6 +830,8 @@ ${finalAdvisory}`;
     }
   } else {
     // No content at all
+    selectionModel = 'Skipped (no content)';
+    assessmentModel = 'Skipped (no content)';
     threatSection += heartbeatSection;
     threatSection += `📰 <b>NewsAPI:</b> <i>No headlines available</i>\n`;
     threatSection += `📡 <b>CNA RSS:</b> <i>No headlines available</i>\n`;

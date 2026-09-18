@@ -32,22 +32,26 @@ export default async function Home(
 
   let initialWindData: any[] = [];
   let initialPm25Data: any[] = [];
+  let initialWindTimestamp: string | undefined;
+  let initialPm25Timestamp: string | undefined;
   if (isSnapshot) {
     try {
       const { fetchWindDataWithFallback, fetchPm25DataWithFallback } = await import('@/lib/env-data');
       if (isWindSnapshot) {
-        const { data: windData } = await fetchWindDataWithFallback();
+        const { data: windData, timestamp: windTs } = await fetchWindDataWithFallback();
         initialWindData = windData;
+        initialWindTimestamp = windTs;
       }
       
       if (isPm25Snapshot) {
-        const { data: pm25Data } = await fetchPm25DataWithFallback();
+        const { data: pm25Data, timestamp: pm25Ts } = await fetchPm25DataWithFallback();
         initialPm25Data = pm25Data;
+        initialPm25Timestamp = pm25Ts;
       }
     } catch (e) {
       console.error('Failed to fetch initial env data for snapshot', e);
     }
   }
 
-  return <Dashboard incidents={serializedIncidents} isSnapshot={isSnapshot} isPm25Snapshot={isPm25Snapshot} isWindSnapshot={isWindSnapshot} initialWindData={initialWindData} initialPm25Data={initialPm25Data} />;
+  return <Dashboard incidents={serializedIncidents} isSnapshot={isSnapshot} isPm25Snapshot={isPm25Snapshot} isWindSnapshot={isWindSnapshot} initialWindData={initialWindData} initialPm25Data={initialPm25Data} initialWindTimestamp={initialWindTimestamp} initialPm25Timestamp={initialPm25Timestamp} />;
 }
