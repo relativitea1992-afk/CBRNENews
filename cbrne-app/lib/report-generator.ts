@@ -256,16 +256,63 @@ export async function generateHourlyReport() {
   let pm25Readings: Record<string, number> = {};
   let previousPm25Readings: Record<string, number> = {};
   try {
-    const dateStr = new Date(Date.now() + 8*60*60*1000).toISOString().split('T')[0];
+    const nowSg = new Date(Date.now() + 8*60*60*1000);
+    const dateStr = nowSg.toISOString().split('T')[0];
+    const yestSg = new Date(nowSg.getTime() - 24*60*60*1000);
+    const yestStr = yestSg.toISOString().split('T')[0];
+    
     const start = Date.now();
-    const envDataPromise = await Promise.all([
-      fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=' + dateStr, {}, 60000).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
-      fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=' + dateStr, {}, 60000).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null),
-      fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/pm25?date=' + dateStr, {}, 60000).then(res => res.text()).then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); }).catch(() => null)
+    const fetchApi = async (type: string, date: string) => {
+        return fetchWithTimeout(`https://api-open.data.gov.sg/v2/real-time/api/${type}?date=${date}`, {}, 60000)
+            .then(res => res.text())
+            .then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); })
+            .catch(() => null);
+    };
+
+    const [speedToday, dirToday, pm25Today, speedYest, dirYest, pm25Yest] = await Promise.all([
+      fetchApi('wind-speed', dateStr),
+      fetchApi('wind-direction', dateStr),
+      fetchApi('pm25', dateStr),
+      fetchApi('wind-speed', yestStr),
+      fetchApi('wind-direction', yestStr),
+      fetchApi('pm25', yestStr)
     ]);
     const latency = Date.now() - start;
 
-    const [speedData, dirData, pm25Data] = envDataPromise;
+    const mergeData = (yest: any, today: any) => {
+        const stationsMap = new Map();
+        if (yest?.data?.stations) yest.data.stations.forEach((s: any) => stationsMap.set(s.id, s));
+        if (today?.data?.stations) today.data.stations.forEach((s: any) => stationsMap.set(s.id, s));
+        
+        const combinedReadings: any[] = [];
+        if (yest?.data?.readings) combinedReadings.push(...yest.data.readings);
+        if (today?.data?.readings) combinedReadings.push(...today.data.readings);
+        
+        combinedReadings.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        const recentReadings = combinedReadings.filter(r => new Date(r.timestamp).getTime() >= cutoff);
+        
+        return { data: { stations: Array.from(stationsMap.values()), readings: recentReadings } };
+    };
+
+    const speedData = mergeData(speedYest, speedToday);
+    const dirData = mergeData(dirYest, dirToday);
+
+    const mergePm25 = (yest: any, today: any) => {
+        const combinedItems: any[] = [];
+        if (yest?.data?.items) combinedItems.push(...yest.data.items);
+        if (today?.data?.items) combinedItems.push(...today.data.items);
+        
+        combinedItems.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        const recentItems = combinedItems.filter(r => new Date(r.timestamp).getTime() >= cutoff);
+        return { data: { items: recentItems } };
+    };
+    const pm25Data = mergePm25(pm25Yest, pm25Today);
+
+    const formatTime = (ms: number) => {
+        return new Date(ms).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hour12: false });
+    };
 
     const extractStationStatus = (data: any, expectedTotal: number = 17) => {
       const KNOWN_STATIONS = [
@@ -275,111 +322,114 @@ export async function generateHourlyReport() {
         'Kim Chuan Road', 'Tengah Meteorological Station', 'Paya Lebar Meteorological Station', 'Scotts Road', 'Old Choa Chu Kang Road'
       ];
 
-      if (!data || !data.data || !data.data.stations || !data.data.readings) {
-          return { total: expectedTotal, active: 0, missing: KNOWN_STATIONS.map(name => ({ name, downSince: 'API data unavailable' })) };
+      if (!data?.data?.stations || !data?.data?.readings || data.data.readings.length === 0) {
+          return { total: expectedTotal, active: 0, missing: KNOWN_STATIONS.map(name => ({ name, downSince: 'missing for >24h' })) };
       }
 
       const stations = data.data.stations;
       const readings = data.data.readings;
       const total = Math.max(stations.length, expectedTotal);
 
-      if (readings.length === 0) {
-          const missingInfo = stations.map((s: any) => ({ name: s.name, downSince: 'since 00:00 (start of day)' }));
-          const seen = new Set(stations.map((s: any) => s.name));
-          for (const name of KNOWN_STATIONS) {
-              if (!seen.has(name)) {
-                  missingInfo.push({ name, downSince: 'since 00:00 (API omitted)' });
-              }
-          }
-          return { total, active: 0, missing: missingInfo };
-      }
-
       const missingInfo: any[] = [];
       let activeCount = 0;
       
-      const latestApiTime = new Date(readings[0].timestamp).getTime();
-      const seenStationNames = new Set<string>();
+      const cutoffTime = Date.now() - 24 * 60 * 60 * 1000;
+      const nowTime = Date.now();
+      const thirtyMins = 30 * 60 * 1000;
 
-      for (const station of stations) {
-        seenStationNames.add(station.name);
-        let lastSeenIndex = -1;
-        for (let i = 0; i < readings.length; i++) {
-            const rData = readings[i].data || [];
-            if (rData.some((d: any) => d.stationId === station.id)) {
-                lastSeenIndex = i;
-                break;
+      for (const stationName of KNOWN_STATIONS) {
+        const stationDef = stations.find((s: any) => s.name === stationName);
+        const stationId = stationDef ? stationDef.id : null;
+        
+        const presentTimes: number[] = [];
+        if (stationId) {
+            for (const r of readings) {
+                const rData = r.data || [];
+                if (rData.some((d: any) => d.stationId === stationId)) {
+                    presentTimes.push(new Date(r.timestamp).getTime());
+                }
             }
         }
         
-        if (lastSeenIndex === -1) {
-            const earliest = readings[readings.length - 1].timestamp;
-            const timeStr = earliest.includes('T') ? earliest.split('T')[1].substring(0, 5) : earliest;
-            missingInfo.push({ name: station.name, downSince: `since ${timeStr} (all day)` });
+        const gaps: string[] = [];
+        if (presentTimes.length === 0) {
+            gaps.push('missing for >24h');
         } else {
-            const lastSeenTime = new Date(readings[lastSeenIndex].timestamp).getTime();
-            const delayMinutes = (latestApiTime - lastSeenTime) / (1000 * 60);
-            
-            // 15-minute grace period for delayed sensor updates
-            if (delayMinutes > 15) {
-                // Determine when it first went missing
-                let downSince = readings[0].timestamp;
-                if (lastSeenIndex - 1 >= 0) {
-                    downSince = readings[lastSeenIndex - 1].timestamp;
+            if ((presentTimes[0] - cutoffTime) > thirtyMins) {
+                gaps.push(`missing prior to ${formatTime(presentTimes[0])}`);
+            }
+            for (let i = 1; i < presentTimes.length; i++) {
+                const gapMs = presentTimes[i] - presentTimes[i-1];
+                if (gapMs > thirtyMins) {
+                    gaps.push(`missing ${formatTime(presentTimes[i-1])}-${formatTime(presentTimes[i])}`);
                 }
-                
-                let timeStr = downSince;
-                if (downSince.includes('T')) {
-                    timeStr = downSince.split('T')[1].substring(0, 5);
-                }
-                missingInfo.push({ name: station.name, downSince: timeStr });
-            } else {
-                activeCount++;
+            }
+            const lastTime = presentTimes[presentTimes.length - 1];
+            if ((nowTime - lastTime) > thirtyMins) {
+                gaps.push(`since ${formatTime(lastTime)}`);
             }
         }
-      }
-
-      for (const name of KNOWN_STATIONS) {
-          if (!seenStationNames.has(name)) {
-              missingInfo.push({ name, downSince: 'since 00:00 (API omitted)' });
-          }
+        
+        if (gaps.length > 0) {
+            missingInfo.push({ name: stationName, downSince: gaps.join(', ') });
+        } else {
+            activeCount++;
+        }
       }
 
       return { total, active: activeCount, missing: missingInfo };
     };
     
     const extractPm25Status = (data: any) => {
-      if (!data || !data.data || !data.data.items || data.data.items.length === 0) return { total: 5, active: 0, missing: [{name: 'ALL', downSince: 'API data unavailable'}] };
-      const items = data.data.items;
-      const latestReading = items[0];
-      const keys = Object.keys(latestReading?.readings?.pm25_one_hourly || {});
-      const active = keys.length;
-      
       const expectedRegions = ['north', 'south', 'east', 'west', 'central'];
-      const missingRegions = expectedRegions.filter(r => !keys.includes(r));
+      if (!data?.data?.items || data.data.items.length === 0) {
+          return { total: 5, active: 0, missing: expectedRegions.map(name => ({ name, downSince: 'missing for >24h' })) };
+      }
       
-      const missingInfo = missingRegions.map(region => {
-        let downSince = latestReading.timestamp;
-        for (let i = 0; i < items.length; i++) {
-            const rKeys = Object.keys(items[i]?.readings?.pm25_one_hourly || {});
+      const items = data.data.items;
+      const missingInfo: any[] = [];
+      let activeCount = 0;
+      
+      const cutoffTime = Date.now() - 24 * 60 * 60 * 1000;
+      const nowTime = Date.now();
+      const pm25Threshold = 65 * 60 * 1000; // 65 mins for hourly readings
+
+      for (const region of expectedRegions) {
+        const presentTimes: number[] = [];
+        for (const item of items) {
+            const rKeys = Object.keys(item.readings?.pm25_one_hourly || {});
             if (rKeys.includes(region)) {
-                if (i - 1 >= 0) downSince = items[i - 1].timestamp;
-                break;
-            } else if (i === items.length - 1) {
-                downSince = items[items.length - 1].timestamp;
+                presentTimes.push(new Date(item.timestamp).getTime());
             }
         }
         
-        let timeStr = downSince;
-        if (downSince.includes('T')) {
-            timeStr = downSince.split('T')[1].substring(0, 5);
+        const gaps: string[] = [];
+        if (presentTimes.length === 0) {
+            gaps.push('missing for >24h');
+        } else {
+            if ((presentTimes[0] - cutoffTime) > pm25Threshold) {
+                gaps.push(`missing prior to ${formatTime(presentTimes[0])}`);
+            }
+            for (let i = 1; i < presentTimes.length; i++) {
+                const gapMs = presentTimes[i] - presentTimes[i-1];
+                if (gapMs > pm25Threshold) {
+                    gaps.push(`missing ${formatTime(presentTimes[i-1])}-${formatTime(presentTimes[i])}`);
+                }
+            }
+            const lastTime = presentTimes[presentTimes.length - 1];
+            if ((nowTime - lastTime) > pm25Threshold) {
+                gaps.push(`since ${formatTime(lastTime)}`);
+            }
         }
-        if (downSince === items[items.length - 1].timestamp) {
-            return { name: region, downSince: `since ${timeStr} (all day)` };
+        
+        if (gaps.length > 0) {
+            missingInfo.push({ name: region, downSince: gaps.join(', ') });
+        } else {
+            activeCount++;
         }
-        return { name: region, downSince: timeStr };
-      });
+      }
 
-      return { total: 5, active, missing: missingInfo };
+      return { total: 5, active: activeCount, missing: missingInfo };
     };
 
     const speedStats = extractStationStatus(speedData, 17);
