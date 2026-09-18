@@ -396,7 +396,7 @@ export async function generateHourlyReport() {
         }
         
         if (gaps.length > 0) {
-            missingInfo.push({ name: stationName, downSince: gaps.join(', ') });
+            missingInfo.push({ name: knownSt.name, downSince: gaps.join(', ') });
         } else {
             activeCount++;
         }
