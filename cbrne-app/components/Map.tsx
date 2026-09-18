@@ -168,9 +168,28 @@ export default function Map({
           popupAnchor: [0, -12]
         });
 
-        // Distribute tooltip directions to prevent overlap
-        const dirs = ["top", "bottom", "left", "right"] as const;
-        const dir = dirs[index % 4];
+        // Hand-crafted tooltip directions to avoid overlapping with PM2.5 markers and other stations
+        const directionMap: Record<string, "top" | "bottom" | "left" | "right"> = {
+          'Marina Barrage': 'right',
+          'Ang Mo Kio Avenue 5': 'top',
+          'Jalan Noordin (Pulau Ubin)': 'right',
+          'Banyan Road (Jurong Island)': 'bottom',
+          'East Coast Park': 'bottom',
+          'Woodlands Avenue 9': 'top',
+          'Tuas South Avenue 3': 'left',
+          'Pasir Panjang Terminal': 'bottom',
+          'Semakau Island': 'bottom',
+          'Artillery Avenue (Sentosa)': 'bottom',
+          'Clementi Road': 'left',
+          'Nanyang Avenue': 'top',
+          'Kim Chuan Road': 'right',
+          'Tengah Meteorological Station': 'top',
+          'Paya Lebar Meteorological Station': 'bottom',
+          'Scotts Road': 'left',
+          'Old Choa Chu Kang Road': 'left'
+        };
+        
+        const dir = directionMap[station.name] || "top";
         const offset = {
           "top": [0, -10],
           "bottom": [0, 10],
