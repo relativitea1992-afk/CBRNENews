@@ -180,12 +180,12 @@ export default function Map({
           'Pasir Panjang Terminal': 'bottom',
           'Semakau Island': 'bottom',
           'Artillery Avenue (Sentosa)': 'bottom',
-          'Clementi Road': 'bottom',
+          'Clementi Road': 'top',
           'Nanyang Avenue': 'left',
           'Kim Chuan Road': 'left',
           'Tengah Meteorological Station': 'top',
           'Paya Lebar Meteorological Station': 'right',
-          'Scotts Road': 'left',
+          'Scotts Road': 'right',
           'Old Choa Chu Kang Road': 'right'
         };
         
