@@ -340,7 +340,7 @@ export async function generateHourlyReport() {
 
       for (const name of KNOWN_STATIONS) {
           if (!seenStationNames.has(name)) {
-              missingInfo.push({ name, downSince: 'start of day (API omitted)' });
+              missingInfo.push({ name, downSince: 'No data today (API omitted)' });
           }
       }
 
