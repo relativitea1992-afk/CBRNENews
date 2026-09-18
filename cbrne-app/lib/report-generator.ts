@@ -381,7 +381,7 @@ export async function generateHourlyReport() {
             gaps.push('missing for >24h');
         } else {
             if ((presentTimes[0] - cutoffTime) > thirtyMins) {
-                gaps.push(`missing prior to ${formatTime(presentTimes[0])}`);
+                gaps.push(`missing ${formatTime(cutoffTime)}-${formatTime(presentTimes[0])}`);
             }
             for (let i = 1; i < presentTimes.length; i++) {
                 const gapMs = presentTimes[i] - presentTimes[i-1];
@@ -391,7 +391,7 @@ export async function generateHourlyReport() {
             }
             const lastTime = presentTimes[presentTimes.length - 1];
             if ((nowTime - lastTime) > thirtyMins) {
-                gaps.push(`since ${formatTime(lastTime)}`);
+                gaps.push(`missing ${formatTime(lastTime)}-${formatTime(nowTime)}`);
             }
         }
         
@@ -433,7 +433,7 @@ export async function generateHourlyReport() {
             gaps.push('missing for >24h');
         } else {
             if ((presentTimes[0] - cutoffTime) > pm25Threshold) {
-                gaps.push(`missing prior to ${formatTime(presentTimes[0])}`);
+                gaps.push(`missing ${formatTime(cutoffTime)}-${formatTime(presentTimes[0])}`);
             }
             for (let i = 1; i < presentTimes.length; i++) {
                 const gapMs = presentTimes[i] - presentTimes[i-1];
@@ -443,7 +443,7 @@ export async function generateHourlyReport() {
             }
             const lastTime = presentTimes[presentTimes.length - 1];
             if ((nowTime - lastTime) > pm25Threshold) {
-                gaps.push(`since ${formatTime(lastTime)}`);
+                gaps.push(`missing ${formatTime(lastTime)}-${formatTime(nowTime)}`);
             }
         }
         
