@@ -331,14 +331,27 @@ export async function generateHourlyReport() {
 
     const extractStationStatusV1 = (data: any, expectedTotal: number = 17) => {
       const KNOWN_STATIONS = [
-        'Marina Gardens Drive', 'Ang Mo Kio Avenue 5', 'Pulau Ubin', 'Banyan Road', 
-        'East Coast Parkway', 'Woodlands Avenue 9', 'Tuas South Avenue 3', 'S23', 
-        'Semakau Island', 'Sentosa', 'Clementi Road', 'Nanyang Avenue', 
-        'Kim Chuan Road', 'Tengah', 'Paya Lebar Airport', 'Scotts Road', 'Old Choa Chu Kang Road'
+        { id: 'S108', name: 'Marina Barrage' },
+        { id: 'S109', name: 'Ang Mo Kio Avenue 5' },
+        { id: 'S106', name: 'Pulau Ubin' },
+        { id: 'S117', name: 'Banyan Road' },
+        { id: 'S107', name: 'East Coast Park' },
+        { id: 'S104', name: 'Woodlands Avenue 9' },
+        { id: 'S115', name: 'Tuas South Avenue 3' },
+        { id: 'S116', name: 'Pasir Panjang Terminal' },
+        { id: 'S102', name: 'Semakau Island' },
+        { id: 'S60',  name: 'Sentosa' },
+        { id: 'S50',  name: 'Clementi Road' },
+        { id: 'S44',  name: 'Nanyang Avenue' },
+        { id: 'S43',  name: 'Kim Chuan Road' },
+        { id: 'S23',  name: 'Tengah' },
+        { id: 'S06',  name: 'Paya Lebar Airport' },
+        { id: 'S111', name: 'Scotts Road' },
+        { id: 'S121', name: 'Old Choa Chu Kang Road' }
       ];
 
       if (!data?.metadata?.stations || !data?.items || data.items.length === 0) {
-          return { total: expectedTotal, active: 0, missing: KNOWN_STATIONS.map(name => ({ name, downSince: 'missing for >24h' })) };
+          return { total: expectedTotal, active: 0, missing: KNOWN_STATIONS.map(st => ({ name: st.name, downSince: 'missing for >24h' })) };
       }
 
       const stations = data.metadata.stations;
@@ -352,17 +365,14 @@ export async function generateHourlyReport() {
       const nowTime = Date.now();
       const thirtyMins = 30 * 60 * 1000;
 
-      for (const stationName of KNOWN_STATIONS) {
-        const stationDef = stations.find((s: any) => s.name === stationName || s.id === stationName);
-        const stationId = stationDef ? stationDef.id : stationName;
+      for (const knownSt of KNOWN_STATIONS) {
+        const stationId = knownSt.id;
         
         const presentTimes: number[] = [];
-        if (stationId) {
-            for (const r of readings) {
-                const rData = r.readings || [];
-                if (rData.some((d: any) => d.station_id === stationId)) {
-                    presentTimes.push(new Date(r.timestamp).getTime());
-                }
+        for (const r of readings) {
+            const rData = r.readings || [];
+            if (rData.some((d: any) => d.station_id === stationId)) {
+                presentTimes.push(new Date(r.timestamp).getTime());
             }
         }
         
