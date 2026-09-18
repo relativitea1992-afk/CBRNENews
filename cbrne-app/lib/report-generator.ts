@@ -262,41 +262,47 @@ export async function generateHourlyReport() {
     const yestStr = yestSg.toISOString().split('T')[0];
     
     const start = Date.now();
-    const fetchApi = async (type: string, date: string) => {
+    const fetchApiV2 = async (type: string, date: string) => {
         return fetchWithTimeout(`https://api-open.data.gov.sg/v2/real-time/api/${type}?date=${date}`, {}, 60000)
+            .then(res => res.text())
+            .then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); })
+            .catch(() => null);
+    };
+    const fetchApiV1 = async (type: string, date: string) => {
+        return fetchWithTimeout(`https://api.data.gov.sg/v1/environment/${type}?date=${date}`, {}, 60000)
             .then(res => res.text())
             .then(text => { ingressBytes += Buffer.byteLength(text, 'utf8'); return JSON.parse(text); })
             .catch(() => null);
     };
 
     const [speedToday, dirToday, pm25Today, speedYest, dirYest, pm25Yest] = await Promise.all([
-      fetchApi('wind-speed', dateStr),
-      fetchApi('wind-direction', dateStr),
-      fetchApi('pm25', dateStr),
-      fetchApi('wind-speed', yestStr),
-      fetchApi('wind-direction', yestStr),
-      fetchApi('pm25', yestStr)
+      fetchApiV1('wind-speed', dateStr),
+      fetchApiV1('wind-direction', dateStr),
+      fetchApiV2('pm25', dateStr),
+      fetchApiV1('wind-speed', yestStr),
+      fetchApiV1('wind-direction', yestStr),
+      fetchApiV2('pm25', yestStr)
     ]);
     const latency = Date.now() - start;
 
-    const mergeData = (yest: any, today: any) => {
+    const mergeDataV1 = (yest: any, today: any) => {
         const stationsMap = new Map();
-        if (yest?.data?.stations) yest.data.stations.forEach((s: any) => stationsMap.set(s.id, s));
-        if (today?.data?.stations) today.data.stations.forEach((s: any) => stationsMap.set(s.id, s));
+        if (yest?.metadata?.stations) yest.metadata.stations.forEach((s: any) => stationsMap.set(s.id, s));
+        if (today?.metadata?.stations) today.metadata.stations.forEach((s: any) => stationsMap.set(s.id, s));
         
         const combinedReadings: any[] = [];
-        if (yest?.data?.readings) combinedReadings.push(...yest.data.readings);
-        if (today?.data?.readings) combinedReadings.push(...today.data.readings);
+        if (yest?.items) combinedReadings.push(...yest.items);
+        if (today?.items) combinedReadings.push(...today.items);
         
         combinedReadings.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
         const recentReadings = combinedReadings.filter(r => new Date(r.timestamp).getTime() >= cutoff);
         
-        return { data: { stations: Array.from(stationsMap.values()), readings: recentReadings } };
+        return { metadata: { stations: Array.from(stationsMap.values()) }, items: recentReadings };
     };
 
-    const speedData = mergeData(speedYest, speedToday);
-    const dirData = mergeData(dirYest, dirToday);
+    const speedData = mergeDataV1(speedYest, speedToday);
+    const dirData = mergeDataV1(dirYest, dirToday);
 
     const mergePm25 = (yest: any, today: any) => {
         const combinedItems: any[] = [];
@@ -323,20 +329,20 @@ export async function generateHourlyReport() {
         return formatter.format(d).replace(', ', ' ');
     };
 
-    const extractStationStatus = (data: any, expectedTotal: number = 17) => {
+    const extractStationStatusV1 = (data: any, expectedTotal: number = 17) => {
       const KNOWN_STATIONS = [
-        'Marina Barrage', 'Ang Mo Kio Avenue 5', 'Jalan Noordin (Pulau Ubin)', 'Banyan Road (Jurong Island)', 
-        'East Coast Park', 'Woodlands Avenue 9', 'Tuas South Avenue 3', 'Pasir Panjang Terminal', 
-        'Semakau Island', 'Artillery Avenue (Sentosa)', 'Clementi Road', 'Nanyang Avenue', 
-        'Kim Chuan Road', 'Tengah Meteorological Station', 'Paya Lebar Meteorological Station', 'Scotts Road', 'Old Choa Chu Kang Road'
+        'Marina Gardens Drive', 'Ang Mo Kio Avenue 5', 'Pulau Ubin', 'Banyan Road', 
+        'East Coast Parkway', 'Woodlands Avenue 9', 'Tuas South Avenue 3', 'S23', 
+        'Semakau Island', 'Sentosa', 'Clementi Road', 'Nanyang Avenue', 
+        'Kim Chuan Road', 'Tengah', 'Paya Lebar Airport', 'Scotts Road', 'Old Choa Chu Kang Road'
       ];
 
-      if (!data?.data?.stations || !data?.data?.readings || data.data.readings.length === 0) {
+      if (!data?.metadata?.stations || !data?.items || data.items.length === 0) {
           return { total: expectedTotal, active: 0, missing: KNOWN_STATIONS.map(name => ({ name, downSince: 'missing for >24h' })) };
       }
 
-      const stations = data.data.stations;
-      const readings = data.data.readings;
+      const stations = data.metadata.stations;
+      const readings = data.items;
       const total = Math.max(stations.length, expectedTotal);
 
       const missingInfo: any[] = [];
@@ -347,14 +353,14 @@ export async function generateHourlyReport() {
       const thirtyMins = 30 * 60 * 1000;
 
       for (const stationName of KNOWN_STATIONS) {
-        const stationDef = stations.find((s: any) => s.name === stationName);
-        const stationId = stationDef ? stationDef.id : null;
+        const stationDef = stations.find((s: any) => s.name === stationName || s.id === stationName);
+        const stationId = stationDef ? stationDef.id : stationName;
         
         const presentTimes: number[] = [];
         if (stationId) {
             for (const r of readings) {
-                const rData = r.data || [];
-                if (rData.some((d: any) => d.stationId === stationId)) {
+                const rData = r.readings || [];
+                if (rData.some((d: any) => d.station_id === stationId)) {
                     presentTimes.push(new Date(r.timestamp).getTime());
                 }
             }
@@ -441,8 +447,8 @@ export async function generateHourlyReport() {
       return { total: 5, active: activeCount, missing: missingInfo };
     };
 
-    const speedStats = extractStationStatus(speedData, 17);
-    const dirStats = extractStationStatus(dirData, 17);
+    const speedStats = extractStationStatusV1(speedData, 17);
+    const dirStats = extractStationStatusV1(dirData, 17);
     const pmStats = extractPm25Status(pm25Data);
 
     let combinedDown: string[] = [];
