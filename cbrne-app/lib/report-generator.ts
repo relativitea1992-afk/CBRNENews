@@ -311,7 +311,16 @@ export async function generateHourlyReport() {
     const pm25Data = mergePm25(pm25Yest, pm25Today);
 
     const formatTime = (ms: number) => {
-        return new Date(ms).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hour12: false });
+        const d = new Date(ms);
+        const formatter = new Intl.DateTimeFormat('en-SG', {
+            timeZone: 'Asia/Singapore',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        return formatter.format(d).replace(', ', ' ');
     };
 
     const extractStationStatus = (data: any, expectedTotal: number = 17) => {
@@ -441,6 +450,8 @@ export async function generateHourlyReport() {
     let dirOnlyDown: string[] = [];
 
     const dirMissingMap = new Map(dirStats.missing.map((m: any) => [m.name, m.downSince]));
+    
+    const combinedDownGroups = new Map<string, string[]>();
 
     for (const s of speedStats.missing) {
         if (dirMissingMap.has(s.name)) {
@@ -449,30 +460,40 @@ export async function generateHourlyReport() {
             if (s.downSince !== dSince) {
                 timeStr = `${s.downSince} (Speed) / ${dSince} (Dir)`;
             }
-            combinedDown.push(`${s.name} since ${timeStr}`);
+            if (!combinedDownGroups.has(timeStr)) combinedDownGroups.set(timeStr, []);
+            combinedDownGroups.get(timeStr)!.push(s.name);
             dirMissingMap.delete(s.name);
         } else {
-            speedOnlyDown.push(`${s.name} since ${s.downSince}`);
+            speedOnlyDown.push(`${s.name}: ${s.downSince}`);
         }
     }
+    
+    for (const [timeStr, stations] of Array.from(combinedDownGroups.entries())) {
+        if (stations.length === 17) {
+            combinedDown.push(`All 17 stations (${timeStr})`);
+        } else {
+            combinedDown.push(`${stations.join(', ')} (${timeStr})`);
+        }
+    }
+
     for (const [name, downSince] of Array.from(dirMissingMap.entries())) {
-        dirOnlyDown.push(`${name} since ${downSince}`);
+        dirOnlyDown.push(`${name}: ${downSince}`);
     }
 
     let windSpeedMsg = `Wind Speed: ${speedStats.active}/${speedStats.total} OK`;
-    if (speedOnlyDown.length > 0) windSpeedMsg += ` (Down: ${speedOnlyDown.join(', ')})`;
+    if (speedOnlyDown.length > 0) windSpeedMsg += ` (Down: ${speedOnlyDown.join('; ')})`;
     
     let windDirMsg = `Wind Direction: ${dirStats.active}/${dirStats.total} OK`;
-    if (dirOnlyDown.length > 0) windDirMsg += ` (Down: ${dirOnlyDown.join(', ')})`;
+    if (dirOnlyDown.length > 0) windDirMsg += ` (Down: ${dirOnlyDown.join('; ')})`;
     
     let combinedMsg = '';
     if (combinedDown.length > 0) {
-        combinedMsg = `\n  • Down for both wind speed and wind direction: ${combinedDown.join(', ')}`;
+        combinedMsg = `\n  • Down for both wind speed & dir: ${combinedDown.join('; ')}`;
     }
 
-    const pmMissingStr = pmStats.missing.map((m: any) => `${m.name} since ${m.downSince}`);
+    const pmMissingStr = pmStats.missing.map((m: any) => `${m.name}: ${m.downSince}`);
     let pm25Msg = `PM2.5: ${pmStats.active}/${pmStats.total} OK`;
-    if (pmMissingStr.length > 0) pm25Msg += ` (Down: ${pmMissingStr.join(', ')})`;
+    if (pmMissingStr.length > 0) pm25Msg += ` (Down: ${pmMissingStr.join('; ')})`;
 
     govSgStatus = `✅ ONLINE (${latency}ms)\n  • ${windSpeedMsg}\n  • ${windDirMsg}${combinedMsg}\n  • ${pm25Msg}`;
 
