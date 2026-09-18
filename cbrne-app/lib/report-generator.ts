@@ -499,26 +499,12 @@ export async function generateHourlyReport() {
 
     // Extract raw PM2.5 readings for use in threats section
     if (pm25Data?.data?.items?.length > 0) {
-      const latestPmItem = pm25Data.data.items[0];
+      const itemsLen = pm25Data.data.items.length;
+      const latestPmItem = pm25Data.data.items[itemsLen - 1];
       pm25Readings = latestPmItem?.readings?.pm25_one_hourly || {};
       
-      if (pm25Data.data.items.length > 1) {
-        previousPm25Readings = pm25Data.data.items[1]?.readings?.pm25_one_hourly || {};
-      } else {
-        // Only 1 reading today (e.g. just past midnight), fetch yesterday's last reading for the trend
-        try {
-          const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleString('en-CA', { timeZone: 'Asia/Singapore' }).split(',')[0];
-          const prevDayRes = await fetchWithTimeout('https://api-open.data.gov.sg/v2/real-time/api/pm25?date=' + yesterdayStr, {}, 60000);
-          const prevDayText = await prevDayRes.text();
-          ingressBytes += Buffer.byteLength(prevDayText, 'utf8');
-          const prevDayData = JSON.parse(prevDayText);
-          if (prevDayData?.data?.items?.length > 0) {
-            // Newest readings are first (index 0)
-            previousPm25Readings = prevDayData.data.items[0]?.readings?.pm25_one_hourly || {};
-          }
-        } catch (e) {
-          console.error("Failed to fetch previous day's PM2.5 data for trend:", e);
-        }
+      if (itemsLen > 1) {
+        previousPm25Readings = pm25Data.data.items[itemsLen - 2]?.readings?.pm25_one_hourly || {};
       }
     }
   } catch (error: any) {
