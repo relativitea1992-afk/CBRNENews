@@ -269,10 +269,10 @@ export async function generateHourlyReport() {
 
     const extractStationStatus = (data: any, expectedTotal: number = 17) => {
       const KNOWN_STATIONS = [
-        'Marina Gardens Drive', 'Ang Mo Kio Avenue 5', 'Pulau Ubin', 'Banyan Road', 
-        'East Coast Parkway', 'Woodlands Avenue 9', 'Tuas South Avenue 3', 'West Coast Highway', 
-        'Semakau Island Landfill', 'Sentosa', 'Clementi Road', 'Nanyang Avenue', 
-        'Kim Chuan Road', 'S23', 'Paya Lebar Airport', 'Scotts Road', 'Old Choa Chu Kang Road'
+        'Marina Barrage', 'Ang Mo Kio Avenue 5', 'Jalan Noordin (Pulau Ubin)', 'Banyan Road (Jurong Island)', 
+        'East Coast Park', 'Woodlands Avenue 9', 'Tuas South Avenue 3', 'Pasir Panjang Terminal', 
+        'Semakau Island', 'Artillery Avenue (Sentosa)', 'Clementi Road', 'Nanyang Avenue', 
+        'Kim Chuan Road', 'Tengah Meteorological Station', 'Paya Lebar Meteorological Station', 'Scotts Road', 'Old Choa Chu Kang Road'
       ];
 
       if (!data || !data.data || !data.data.stations || !data.data.readings) {
@@ -284,11 +284,11 @@ export async function generateHourlyReport() {
       const total = Math.max(stations.length, expectedTotal);
 
       if (readings.length === 0) {
-          const missingInfo = stations.map((s: any) => ({ name: s.name, downSince: 'No data today' }));
+          const missingInfo = stations.map((s: any) => ({ name: s.name, downSince: 'since 00:00 (start of day)' }));
           const seen = new Set(stations.map((s: any) => s.name));
           for (const name of KNOWN_STATIONS) {
               if (!seen.has(name)) {
-                  missingInfo.push({ name, downSince: 'No data today (API omitted)' });
+                  missingInfo.push({ name, downSince: 'since 00:00 (API omitted)' });
               }
           }
           return { total, active: 0, missing: missingInfo };
@@ -340,7 +340,7 @@ export async function generateHourlyReport() {
 
       for (const name of KNOWN_STATIONS) {
           if (!seenStationNames.has(name)) {
-              missingInfo.push({ name, downSince: 'No data today (API omitted)' });
+              missingInfo.push({ name, downSince: 'since 00:00 (API omitted)' });
           }
       }
 
