@@ -168,14 +168,14 @@ export default function Map({
           popupAnchor: [0, -12]
         });
 
-        // Distribute tooltip directions to prevent overlap in snapshot mode
+        // Distribute tooltip directions to prevent overlap
         const dirs = ["top", "bottom", "left", "right"] as const;
-        const dir = hideOverlay ? dirs[index % 4] : "top";
+        const dir = dirs[index % 4];
         const offset = {
           "top": [0, -10],
           "bottom": [0, 10],
-          "left": [-10, 0],
-          "right": [10, 0]
+          "left": [-15, 0],
+          "right": [15, 0]
         }[dir] as [number, number];
 
         return (

@@ -38,7 +38,7 @@ export async function fetchWindDataWithFallback() {
     'East Coast Park': 'East Coast Parkway',
     'Woodlands Avenue 9': 'Woodlands Avenue 9',
     'Tuas South Avenue 3': 'Tuas South Avenue 3',
-    'Pasir Panjang Terminal': 'S23', // or West Coast Highway
+    'Pasir Panjang Terminal': 'West Coast Highway',
     'Semakau Island': 'Semakau Island',
     'Artillery Avenue (Sentosa)': 'Sentosa',
     'Clementi Road': 'Clementi Road',
