@@ -81,7 +81,7 @@ export async function fetchWindDataWithFallback() {
   });
 
   return {
-    data: windData.filter((w: any) => w.lat !== 1.3521 && w.speed !== null), // filter out unmapped/offline
+    data: windData.filter((w: any) => w.lat !== 1.3521), // filter out unmapped stations, but keep offline ones
     timestamp: latestSpeed.length > 0 ? latestSpeed[0].timestamp : new Date().toISOString()
   };
 }
