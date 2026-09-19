@@ -1,21 +1,23 @@
 import { NEA_WIND_STATIONS } from './constants';
 
 export async function fetchWindDataWithFallback() {
-  const now = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Singapore"}));
+  // Use direct UTC+8 offset for reliable SGT date (avoids locale string re-parsing bugs on server)
+  const nowMs = Date.now() + 8 * 60 * 60 * 1000;
+  const now = new Date(nowMs);
   let dateParam = now.toISOString().split('T')[0];
 
-  let speedRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=${dateParam}`, { next: { revalidate: 60 } });
-  let dirRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=${dateParam}`, { next: { revalidate: 60 } });
+  let speedRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=${dateParam}`, { cache: 'no-store' });
+  let dirRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=${dateParam}`, { cache: 'no-store' });
   
   let speedData = await speedRes.json();
   let dirData = await dirRes.json();
 
   // Fallback to yesterday if today is empty
   if ((!speedData.data?.readings || speedData.data.readings.length === 0) || (!dirData.data?.readings || dirData.data.readings.length === 0)) {
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterday = new Date(nowMs - 24 * 60 * 60 * 1000);
     dateParam = yesterday.toISOString().split('T')[0];
-    speedRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=${dateParam}`, { next: { revalidate: 60 } });
-    dirRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=${dateParam}`, { next: { revalidate: 60 } });
+    speedRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-speed?date=${dateParam}`, { cache: 'no-store' });
+    dirRes = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/wind-direction?date=${dateParam}`, { cache: 'no-store' });
     speedData = await speedRes.json();
     dirData = await dirRes.json();
   }
@@ -71,16 +73,17 @@ export async function fetchWindDataWithFallback() {
 }
 
 export async function fetchPm25DataWithFallback() {
-  const now = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Singapore"}));
-  let dateParam = now.toISOString().split('T')[0];
+  // Use direct UTC+8 offset for reliable SGT date (avoids locale string re-parsing bugs on server)
+  const nowMs = Date.now() + 8 * 60 * 60 * 1000;
+  let dateParam = new Date(nowMs).toISOString().split('T')[0];
 
-  let pm25Res = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/pm25?date=${dateParam}`, { next: { revalidate: 60 } });
+  let pm25Res = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/pm25?date=${dateParam}`, { cache: 'no-store' });
   let pm25Data = await pm25Res.json();
 
   if (!pm25Data.data?.items || pm25Data.data.items.length === 0) {
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterday = new Date(nowMs - 24 * 60 * 60 * 1000);
     dateParam = yesterday.toISOString().split('T')[0];
-    pm25Res = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/pm25?date=${dateParam}`, { next: { revalidate: 60 } });
+    pm25Res = await fetch(`https://api-open.data.gov.sg/v2/real-time/api/pm25?date=${dateParam}`, { cache: 'no-store' });
     pm25Data = await pm25Res.json();
   }
 

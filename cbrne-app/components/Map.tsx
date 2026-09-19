@@ -182,20 +182,22 @@ export default function Map({
           'Artillery Avenue (Sentosa)': 'bottom',
           'Clementi Road': 'top',
           'Nanyang Avenue': 'left',
-          'Kim Chuan Road': 'left',
+          'Kim Chuan Road': 'top',
           'Tengah Meteorological Station': 'top',
-          'Paya Lebar Meteorological Station': 'right',
+          'Paya Lebar Meteorological Station': 'top',
           'Scotts Road': 'right',
-          'Old Choa Chu Kang Road': 'right'
+          'Old Choa Chu Kang Road': 'right',
+          'Changi': 'right',
+          'Tai Seng': 'left'
         };
         
         const dir = directionMap[station.name] || "top";
         const offset = {
-          "top": [0, -10],
-          "bottom": [0, 10],
-          "left": [-15, 0],
-          "right": [15, 0]
-        }[dir] as [number, number];
+          "top": [0, -14] as [number, number],
+          "bottom": [0, 14] as [number, number],
+          "left": [-18, 0] as [number, number],
+          "right": [18, 0] as [number, number]
+        }[dir];
 
         return (
           <Marker 

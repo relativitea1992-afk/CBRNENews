@@ -329,6 +329,21 @@ export async function generateHourlyReport() {
         return formatter.format(d).replace(', ', ' ');
     };
 
+    const formatDuration = (ms: number) => {
+        const totalMins = Math.round(ms / 60000);
+        if (totalMins < 60) return `~${totalMins}m`;
+        const hours = Math.floor(totalMins / 60);
+        const mins = totalMins % 60;
+        if (hours >= 24) {
+            const days = Math.floor(hours / 24);
+            const remHrs = hours % 24;
+            if (remHrs === 0) return `~${days}d`;
+            return `~${days}d ${remHrs}h`;
+        }
+        if (mins === 0) return `~${hours}h`;
+        return `~${hours}h ${mins}m`;
+    };
+
     const extractStationStatusV1 = (data: any, expectedTotal: number = 17) => {
       const KNOWN_STATIONS = [
         { id: 'S108', name: 'Marina Barrage' },
@@ -381,17 +396,19 @@ export async function generateHourlyReport() {
             gaps.push('missing for >24h');
         } else {
             if ((presentTimes[0] - cutoffTime) > thirtyMins) {
-                gaps.push(`missing ${formatTime(cutoffTime)}-${formatTime(presentTimes[0])}`);
+                const gapMs = presentTimes[0] - cutoffTime;
+                gaps.push(`missing ${formatTime(cutoffTime)}-${formatTime(presentTimes[0])} (${formatDuration(gapMs)})`);
             }
             for (let i = 1; i < presentTimes.length; i++) {
                 const gapMs = presentTimes[i] - presentTimes[i-1];
                 if (gapMs > thirtyMins) {
-                    gaps.push(`missing ${formatTime(presentTimes[i-1])}-${formatTime(presentTimes[i])}`);
+                    gaps.push(`missing ${formatTime(presentTimes[i-1])}-${formatTime(presentTimes[i])} (${formatDuration(gapMs)})`);
                 }
             }
             const lastTime = presentTimes[presentTimes.length - 1];
             if ((nowTime - lastTime) > thirtyMins) {
-                gaps.push(`missing ${formatTime(lastTime)}-${formatTime(nowTime)}`);
+                const gapMs = nowTime - lastTime;
+                gaps.push(`missing ${formatTime(lastTime)}-${formatTime(nowTime)} (${formatDuration(gapMs)})`);
             }
         }
         
@@ -433,17 +450,19 @@ export async function generateHourlyReport() {
             gaps.push('missing for >24h');
         } else {
             if ((presentTimes[0] - cutoffTime) > pm25Threshold) {
-                gaps.push(`missing ${formatTime(cutoffTime)}-${formatTime(presentTimes[0])}`);
+                const gapMs = presentTimes[0] - cutoffTime;
+                gaps.push(`missing ${formatTime(cutoffTime)}-${formatTime(presentTimes[0])} (${formatDuration(gapMs)})`);
             }
             for (let i = 1; i < presentTimes.length; i++) {
                 const gapMs = presentTimes[i] - presentTimes[i-1];
                 if (gapMs > pm25Threshold) {
-                    gaps.push(`missing ${formatTime(presentTimes[i-1])}-${formatTime(presentTimes[i])}`);
+                    gaps.push(`missing ${formatTime(presentTimes[i-1])}-${formatTime(presentTimes[i])} (${formatDuration(gapMs)})`);
                 }
             }
             const lastTime = presentTimes[presentTimes.length - 1];
             if ((nowTime - lastTime) > pm25Threshold) {
-                gaps.push(`missing ${formatTime(lastTime)}-${formatTime(nowTime)}`);
+                const gapMs = nowTime - lastTime;
+                gaps.push(`missing ${formatTime(lastTime)}-${formatTime(nowTime)} (${formatDuration(gapMs)})`);
             }
         }
         
