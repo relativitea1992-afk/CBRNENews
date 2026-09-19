@@ -620,9 +620,11 @@ export async function generateHourlyReport() {
       threatSection += `<i>...and ${numClusters - 3} more active events</i>\n`;
     }
 
-    // Show live PM2.5 readings if any haze/air quality threat is active
+    // Show live PM2.5 readings if any haze/air quality threat is active OR if readings are elevated (>55)
     const hasHazeThreat = clusteredThreats.some(t => /haze|air quality/i.test(t.type || ''));
-    if (hasHazeThreat && Object.keys(pm25Readings).length > 0) {
+    const currentPm25Vals = Object.values(pm25Readings).filter(v => typeof v === 'number');
+    const hasElevatedPm25 = currentPm25Vals.some(v => v > 55);
+    if ((hasHazeThreat || hasElevatedPm25) && Object.keys(pm25Readings).length > 0) {
       const liveTimeStr = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
       threatSection += `\n🌫️ <b>Live PM2.5 Readings (${liveTimeStr}):</b>\n`;
       const regions = ['north', 'south', 'east', 'west', 'central'];
@@ -631,13 +633,12 @@ export async function generateHourlyReport() {
       threatSection += `  ${row1}\n  ${row2}\n`;
       
       // Calculate Stats
-      const currentVals = Object.values(pm25Readings).filter(v => typeof v === 'number');
       const prevVals = Object.values(previousPm25Readings).filter(v => typeof v === 'number');
       
-      if (currentVals.length > 0) {
-        const min = Math.min(...currentVals);
-        const max = Math.max(...currentVals);
-        const avg = Math.round(currentVals.reduce((a, b) => a + b, 0) / currentVals.length);
+      if (currentPm25Vals.length > 0) {
+        const min = Math.min(...currentPm25Vals);
+        const max = Math.max(...currentPm25Vals);
+        const avg = Math.round(currentPm25Vals.reduce((a, b) => a + b, 0) / currentPm25Vals.length);
         
         let trendStr = '';
         if (prevVals.length > 0) {
@@ -654,6 +655,38 @@ export async function generateHourlyReport() {
     }
   } else {
     threatSection = `\n💚 <b>No CBRNE threats detected (Past 24hr)</b>\n`;
+
+    // Still show PM2.5 readings when elevated, even without active threats
+    const currentPm25Vals = Object.values(pm25Readings).filter(v => typeof v === 'number');
+    const hasElevatedPm25 = currentPm25Vals.some(v => v > 55);
+    if (hasElevatedPm25 && Object.keys(pm25Readings).length > 0) {
+      const liveTimeStr = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+      threatSection += `\n🌫️ <b>Live PM2.5 Readings (${liveTimeStr}):</b>\n`;
+      const regions = ['north', 'south', 'east', 'west', 'central'];
+      const row1 = regions.slice(0, 3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
+      const row2 = regions.slice(3).map(r => `${r.charAt(0).toUpperCase() + r.slice(1)}: ${pm25Readings[r] ?? 'N/A'}`).join(' | ');
+      threatSection += `  ${row1}\n  ${row2}\n`;
+      
+      const prevVals = Object.values(previousPm25Readings).filter(v => typeof v === 'number');
+      
+      if (currentPm25Vals.length > 0) {
+        const min = Math.min(...currentPm25Vals);
+        const max = Math.max(...currentPm25Vals);
+        const avg = Math.round(currentPm25Vals.reduce((a, b) => a + b, 0) / currentPm25Vals.length);
+        
+        let trendStr = '';
+        if (prevVals.length > 0) {
+          const prevAvg = Math.round(prevVals.reduce((a, b) => a + b, 0) / prevVals.length);
+          if (avg > prevAvg) trendStr = ` (⬆️ +${avg - prevAvg} from last hr)`;
+          else if (avg < prevAvg) trendStr = ` (⬇️ ${avg - prevAvg} from last hr)`;
+          else trendStr = ` (➖ Unchanged)`;
+        }
+        
+        threatSection += `  <i>Stats: Min ${min} | Max ${max} | Avg ${avg}${trendStr}</i>\n`;
+      }
+      
+      threatSection += `  <i>Ref: Normal (0-55) · Elevated (56-150) · High (151-250) · Very High (&gt;250)</i>\n`;
+    }
   }
 
   // Run extracted news through Gemini for CBRNE assessment & top headline selection
